@@ -49,7 +49,7 @@
 class Tr8n::Language < ActiveRecord::Base
   set_table_name :tr8n_languages
   
-  attr_accessible :locale, :english_name, :native_name, :enabled, :right_to_left, :completenss, :fallback_language_id, :curse_words, :featured_index, :google_key, :facebook_key
+  attr_accessible :locale, :english_name, :native_name, :enabled, :right_to_left, :completeness, :fallback_language_id, :curse_words, :featured_index, :google_key, :facebook_key
   attr_accessible :fallback_language
 
   after_save      :update_cache
@@ -293,7 +293,7 @@ class Tr8n::Language < ActiveRecord::Base
   def total_metric
     @total_metric ||= begin
       metric = Tr8n::TotalLanguageMetric.find(:first, :conditions => ["language_id = ?", self.id])
-      metric || Tr8n::TotalLanguageMetric.create(Tr8n::LanguageMetric.default_attributes.merge(:language_id => self.id))
+      metric ||= Tr8n::TotalLanguageMetric.create(Tr8n::LanguageMetric.default_attributes.merge(:language_id => self.id))
     end
   end
 
