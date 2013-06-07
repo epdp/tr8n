@@ -43,15 +43,17 @@ module Tr8n
       if request.env["rack.request.form_hash"] and request.env["rack.request.form_hash"]["locale"]
         if params[:locale] != request.env["rack.request.form_hash"]["locale"]
           mismatch = true
-          puts "Locale mismatch found in tr8n controller."
-          puts "URL says: #{params[:locale]}"
-          puts "Form says: #{request.env["rack.request.form_hash"]["locale"]}"
-          puts "changing it to form locale."
+          logger.info "Locale mismatch found in tr8n language controller."
+          logger.info "URL says: #{params[:locale]}"
+          logger.info "Form says: #{request.env["rack.request.form_hash"]["locale"]}"
+          logger.info "changing it to form locale."
           params[:locale] = request.env["rack.request.form_hash"]["locale"]
         end
       end
       if params["action"] == "switch" or mismatch
         target_url = params["source_url"]
+        logger.info "Inside redirection block."
+        logger.info "Changing params[locale]:-#{params[:locale]}- to request[:locale]:-#{request[:locale]}-."
         params[:locale] = request[:locale]
         url_parts = params["source_url"].split("/")
         if url_parts.count > 3 and request[:locale]
@@ -59,6 +61,7 @@ module Tr8n
           target_url = url_parts.join("/")
         end
         request["source_url"] = target_url
+        logger.info "Redirecting from tr8n:validate_locale_is_not_shadowed to #{request["source_url"]}"
         redirect_to_source and return
       end
     end
