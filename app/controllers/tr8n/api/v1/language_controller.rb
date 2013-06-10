@@ -26,22 +26,39 @@ class Tr8n::Api::V1::LanguageController < Tr8n::Api::V1::BaseController
   # for ssl access to the translator - using ssl_requirement plugin  
   ssl_allowed :translate  if respond_to?(:ssl_allowed)
 
-  # returns a list of all languages
   def index
-    languages = []
-    Tr8n::Language.enabled_languages.each do |lang|
-      languages << {:locale => lang.locale, 
-                    :name => lang.full_name, 
-                    :english_name => lang.english_name, 
-                    :native_name => lang.native_name, 
-                    :id => lang.id}
+    if params[:locale].blank?
+      return render_error("Locale must be provided")
     end
-    sanitize_api_response({:languages => languages})
+
+    lang = Tr8n::Language.for(params[:locale])
+    unless lang
+      return render_error("Unknown language locale")
+    end
+
+    render_response(lang.to_api_hash(:definition => true))
+  end
+
+  def all
+    render_response(Tr8n::Language.order('english_name asc').all)
+  end
+
+  def enabled
+    render_response(Tr8n::Language.enabled_languages)
+  end
+
+  def featured
+    render_response(Tr8n::Language.featured_languages)
   end
   
+  # deprecated - has been moved to proxy API  
   def translate
-    language = Tr8n::Language.for(params[:language]) || tr8n_current_language
-    return sanitize_api_response(translate_phrase(language, params, {:source => source, :api => :translate})) if params[:label]
+    domain = Tr8n::TranslationDomain.find_or_create(request.env['HTTP_REFERER'])
+    language = Tr8n::Language.for(params[:language] || params[:locale]) || tr8n_current_language
+    Tr8n::Config.set_application(domain.application)
+    Tr8n::Config.set_language(language)
+
+    return render_response(translate_phrase(language, params, {:source => source, :api => :translate, :application => domain.application})) if params[:label]
     
     # API signature
     # {:source => "", :language => "", :phrases => [{:label => ""}]}
@@ -50,7 +67,7 @@ class Tr8n::Api::V1::LanguageController < Tr8n::Api::V1::BaseController
     # this can be used by a parallel application or a JavaScript Client SDK that needs to build a page cache
     if params[:batch] == "true" or params[:cache] == "true"
       if params[:sources].blank? and params[:source].blank?
-        return sanitize_api_response({"error" => "No source/sources have been provided for the batch request."})
+        return render_response({"error" => "No source/sources have been provided for the batch request."})
       end
       
       source_names = params[:sources] || [params[:source]]
@@ -70,28 +87,34 @@ class Tr8n::Api::V1::LanguageController < Tr8n::Api::V1::BaseController
         translations << trn 
       end
       
-      return sanitize_api_response({:phrases => translations})
+      return render_response({:phrases => translations})
     elsif params[:phrases]
-      
-      phrases = []
-      begin
-        phrases = HashWithIndifferentAccess.new({:data => JSON.parse(params[:phrases])})[:data]
-      rescue Exception => ex
-        return sanitize_api_response({"error" => "Invalid request. JSON parsing failed: #{ex.message}"})
+
+      if params[:phrases].is_a?(String)
+        phrases = []
+        begin
+          phrases = HashWithIndifferentAccess.new({:data => JSON.parse(params[:phrases])})[:data]
+        rescue Exception => ex
+          return render_error("Invalid request. JSON parsing failed: #{ex.message}")
+        end
+      else
+        phrases = params[:phrases]
       end
 
       translations = []
       phrases.each do |phrase|
         phrase = {:label => phrase} if phrase.is_a?(String)
-        translations << translate_phrase(language, phrase, {:source => source, :url => source, :api => :translate})
+        language = phrase[:locale].blank? ? Tr8n::Config.default_language.locale : (Tr8n::Language.for(phrase[:locale]) || Tr8n::Language.find_by_google_key(phrase[:locale]))
+
+        translations << translate_phrase(language, phrase, {:source => source, :url => request.env['HTTP_REFERER'], :api => :translate, :locale => language.locale, :application => domain.application})
       end
 
-      return sanitize_api_response({:phrases => translations})    
+      return render_response({:phrases => translations})    
     end
     
-    sanitize_api_response(:phrases => {})
+    render_response(:phrases => [])
   rescue Tr8n::KeyRegistrationException => ex
-    sanitize_api_response({"error" => ex.message})
+    render_response({"error" => ex.message})
   end
 
 private

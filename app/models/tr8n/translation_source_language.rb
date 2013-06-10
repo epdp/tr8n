@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,18 +28,17 @@
 #  id                       INTEGER     not null, primary key
 #  language_id              integer     
 #  translation_source_id    integer     
-#  created_at               datetime    
-#  updated_at               datetime    
+#  created_at               datetime    not null
+#  updated_at               datetime    not null
 #
 # Indexes
 #
-#  tsllt    (language_id, translation_source_id) 
+#  tr8n_tsl_lt    (language_id, translation_source_id) 
 #
 #++
 
 class Tr8n::TranslationSourceLanguage < ActiveRecord::Base
   self.table_name = :tr8n_translation_source_languages
-
   attr_accessible :language_id, :translation_source_id
   attr_accessible :translation_source, :language
 

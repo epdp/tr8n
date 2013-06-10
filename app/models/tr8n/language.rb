@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -29,6 +29,7 @@
 #  locale                  varchar(255)    not null
 #  english_name            varchar(255)    not null
 #  native_name             varchar(255)    
+#  threshold               integer         default = 1
 #  enabled                 boolean         
 #  right_to_left           boolean         
 #  completeness            integer         
@@ -37,19 +38,20 @@
 #  featured_index          integer         default = 0
 #  google_key              varchar(255)    
 #  facebook_key            varchar(255)    
-#  created_at              datetime        
-#  updated_at              datetime        
+#  myheritage_key          varchar(255)    
+#  created_at              datetime        not null
+#  updated_at              datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_languages_on_locale    (locale) 
+#  tr8n_ll    (locale) 
 #
 #++
 
 class Tr8n::Language < ActiveRecord::Base
-  self.table_name = :tr8n_languages
-  
-  attr_accessible :locale, :english_name, :native_name, :enabled, :right_to_left, :completenss, :fallback_language_id, :curse_words, :featured_index, :google_key, :facebook_key
+  self.table_name = :tr8n_languages  
+  attr_accessible :locale, :english_name, :native_name, :enabled, :right_to_left, :completenss, :fallback_language_id, :curse_words, :featured_index
+  attr_accessible :google_key, :facebook_key, :myheritage_key
   attr_accessible :fallback_language
 
   after_save      :update_cache
@@ -64,14 +66,44 @@ class Tr8n::Language < ActiveRecord::Base
   has_many :translation_key_locks,  :class_name => 'Tr8n::TranslationKeyLock',  :dependent => :destroy
   has_many :language_metrics,       :class_name => 'Tr8n::LanguageMetric'
   
+  ###############################################################
+  ## CACHE METHODS
+  ###############################################################
   def self.cache_key(locale)
-    "language_#{locale}"
+    "language_[#{locale}]"
   end
 
   def cache_key
     self.class.cache_key(locale)
   end
   
+  def context_rules_cache_key
+    "rules_[#{locale}]"
+  end
+
+  def language_cases_cache_key
+    "cases_[#{locale}]"
+  end
+
+  def self.featured_languages_cache_key
+    "featured_languages"
+  end
+
+  def self.enabled_languages_cache_key
+    "enabled_languages"
+  end
+
+  def update_cache
+    Tr8n::Cache.delete(cache_key)
+    Tr8n::Cache.delete(context_rules_cache_key)
+    Tr8n::Cache.delete(language_cases_cache_key)
+    Tr8n::Cache.delete(self.class.featured_languages_cache_key)
+    Tr8n::Cache.delete(self.class.enabled_languages_cache_key)
+  end
+
+  ###############################################################
+  ## FINDER METHODS
+  ###############################################################
   def self.for(locale)
     return nil if locale.nil?
     Tr8n::Cache.fetch(cache_key(locale)) do 
@@ -84,13 +116,13 @@ class Tr8n::Language < ActiveRecord::Base
   end
 
   def rules
-    Tr8n::Cache.fetch("language_rules_#{locale}") do 
+    Tr8n::Cache.fetch(context_rules_cache_key) do 
       language_rules
     end
   end
 
   def cases
-    Tr8n::Cache.fetch("language_cases_#{locale}") do 
+    Tr8n::Cache.fetch(language_cases_cache_key) do 
       language_cases
     end
   end
@@ -221,37 +253,30 @@ class Tr8n::Language < ActiveRecord::Base
   end
   
   def self.enabled_languages
-    Tr8n::Cache.fetch("enabled_languages") do 
-      find(:all, :conditions => ["enabled = ?", true], :order => "english_name asc")
+    Tr8n::Cache.fetch(enabled_languages_cache_key) do 
+      where("enabled = ?", true).order("english_name asc").all
     end
   end
 
   def self.featured_languages
-    Tr8n::Cache.fetch("featured_languages") do 
-      find(:all, :conditions => ["enabled = ? and featured_index is not null and featured_index > 0", true], :order => "featured_index desc")
+    Tr8n::Cache.fetch(featured_languages_cache_key) do 
+      where("enabled = ? and featured_index is not null and featured_index > 0", true).order("featured_index desc").all
     end
   end
 
   def self.translate(label, desc = "", tokens = {}, options = {})
-    # raise Tr8n::Exception.new("The label is blank") if label.blank?
-    raise Tr8n::Exception.new("The label is being translated twice") if label.tr8n_translated?
-
-    return Tr8n::TranslationKey.substitute_tokens(label, tokens, options).tr8n_translated unless Tr8n::Config.enabled?
-    return Tr8n::TranslationKey.substitute_tokens(label, tokens, options).tr8n_translated if Tr8n::Config.current_language.default?
-
-    options.delete(:source) unless Tr8n::Config.enable_key_source_tracking?
-    Tr8n::Config.current_language.translate(label, desc, tokens, options).tr8n_translated
+    Tr8n::Config.current_language.translate(label, desc, tokens, options)
   end
 
   def translate(label, desc = "", tokens = {}, options = {})
-    # raise Tr8n::Exception.new("The label is blank") if label.blank?
-    raise Tr8n::Exception.new("The label is being translated twice") if label.tr8n_translated?
+    raise Tr8n::Exception.new("The label #{label} is being translated twice") if label.tr8n_translated?
 
-    return Tr8n::TranslationKey.substitute_tokens(label, tokens, options, self).tr8n_translated unless Tr8n::Config.enabled?
-    return Tr8n::TranslationKey.substitute_tokens(label, tokens, options, self).tr8n_translated if default?
+    unless Tr8n::Config.enabled?
+      return Tr8n::TranslationKey.substitute_tokens(label, tokens, options, self).tr8n_translated.html_safe
+    end
 
     translation_key = Tr8n::TranslationKey.find_or_create(label, desc, options)
-    translation_key.translate(self, tokens.merge(:viewing_user => Tr8n::Config.current_user), options).tr8n_translated
+    translation_key.translate(self, tokens.merge(:viewing_user => Tr8n::Config.current_user), options).tr8n_translated.html_safe
   end
   alias :tr :translate
 
@@ -284,20 +309,20 @@ class Tr8n::Language < ActiveRecord::Base
   end
 
   def update_daily_metrics_for(metric_date)
-    metric = Tr8n::DailyLanguageMetric.find(:first, :conditions => ["language_id = ? and metric_date = ?", self.id, metric_date])
+    metric = Tr8n::DailyLanguageMetric.where("language_id = ? and metric_date = ?", self.id, metric_date).first
     metric ||= Tr8n::DailyLanguageMetric.create(:language_id => self.id, :metric_date => metric_date)
     metric.update_metrics!
   end
 
   def update_monthly_metrics_for(metric_date)
-    metric = Tr8n::MonthlyLanguageMetric.find(:first, :conditions => ["language_id = ? and metric_date = ?", self.id, metric_date])
+    metric = Tr8n::MonthlyLanguageMetric.where("language_id = ? and metric_date = ?", self.id, metric_date).first
     metric ||= Tr8n::MonthlyLanguageMetric.create(:language_id => self.id, :metric_date => metric_date)
     metric.update_metrics!
   end
 
   def total_metric
     @total_metric ||= begin
-      metric = Tr8n::TotalLanguageMetric.find(:first, :conditions => ["language_id = ?", self.id])
+      metric = Tr8n::TotalLanguageMetric.where("language_id = ?", self.id).first
       metric || Tr8n::TotalLanguageMetric.create(Tr8n::LanguageMetric.default_attributes.merge(:language_id => self.id))
     end
   end
@@ -350,14 +375,6 @@ class Tr8n::Language < ActiveRecord::Base
     # TODO: handle change event - count translations, update total metrics
   end
   
-  def update_cache
-    Tr8n::Cache.delete(cache_key)
-    Tr8n::Cache.delete("language_rules_#{locale}")
-    Tr8n::Cache.delete("language_cases_#{locale}")
-    Tr8n::Cache.delete("featured_languages")
-    Tr8n::Cache.delete("enabled_languages")
-  end
-
   def recently_added_forum_messages
     @recently_added_forum_messages ||= Tr8n::LanguageForumMessage.where("language_id = ?", self.id).order("created_at desc").limit(5)    
   end
@@ -382,4 +399,36 @@ class Tr8n::Language < ActiveRecord::Base
     super || Tr8n::Config.translation_threshold
   end
 
+  def to_api_hash(opts = {})
+    hash = {
+      :locale => self.locale,  
+      :name => self.full_name, 
+      :english_name => self.english_name, 
+      :native_name => self.native_name, 
+      :right_to_left => self.right_to_left,
+      :enabled => self.enabled,
+      :google_key => self.google_key,
+      :facebook_key => self.facebook_key,
+      :myheritage_key => self.myheritage_key,
+     }
+
+    if opts[:definition]
+      hash[:curse_words] = curse_words
+      hash[:fallback] = fallback_language.locale if fallback_language
+
+      hash[:context_rules] = []
+      Tr8n::Config.language_rule_classes.each do |rule_class|
+        hash[:context_rules] << rule_class.to_api_hash(:language => self)
+      end
+
+      hash[:language_cases] = []
+      Tr8n::LanguageCase.where(:language_id => self.id).each do |lc|
+        hash[:language_cases] << lc.to_api_hash(:rules => true)
+      end
+
+    end
+    hash
+  end
+
 end
+

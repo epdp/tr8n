@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -35,19 +35,21 @@
 #  key_count               integer         default = 0
 #  locked_key_count        integer         default = 0
 #  translated_key_count    integer         default = 0
-#  created_at              datetime        
-#  updated_at              datetime        
+#  created_at              datetime        not null
+#  updated_at              datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_language_metrics_on_created_at     (created_at) 
-#  index_tr8n_language_metrics_on_language_id    (language_id) 
+#  tr8n_lm_c    (created_at) 
+#  tr8n_lm_l    (language_id) 
 #
 #++
 
 class Tr8n::MonthlyLanguageMetric < Tr8n::LanguageMetric
 
-  def update_metrics!
+  def update_metrics!(opts = {})
+    return Tr8n::OfflineTask.schedule(self, :update_metrics!, {:offline => true}) unless opts[:offline]
+
     attribs = default_attributes
     attribs.each do |key, value|
       attribs[key] = Tr8n::DailyLanguageMetric.where("language_id = ? and metric_date >= ? and metric_date < ?", language_id, metric_date, metric_date + 1.month).sum(key)

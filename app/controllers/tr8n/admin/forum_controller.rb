@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8nhub.com
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,18 +30,5 @@ class Tr8n::Admin::ForumController < Tr8n::Admin::BaseController
   def messages
     @messages = Tr8n::LanguageForumMessage.filter(:params => params, :filter => Tr8n::LanguageForumMessageFilter)
   end
-
-  def delete_topic
-    topic = Tr8n::LanguageForumTopic.find_by_id(params[:topic_id]) if params[:topic_id]
-    topic.destroy if topic
-
-    redirect_to_source
-  end  
-
-  def delete_message
-    message = Tr8n::LanguageForumMessage.find_by_id(params[:msg_id]) if params[:msg_id]
-    message.destroy if message
-
-    redirect_to_source
-  end   
+ 
 end

@@ -1,0 +1,43 @@
+<%= will_filter_scripts_tag %>
+
+<%= form_tag("", :id => "tr8n_form") do %>
+  <%= hidden_field_tag(:type, "vote") %>
+  <%= will_filter_table_tag(@results, :columns => [
+    [:icn, lambda{|vote|
+      if vote.vote > 0
+        image_tag("tr8n/icons/thumb_up.png")
+      else
+        image_tag("tr8n/icons/thumb_down.png")
+      end
+    }, :title => "", :style => "width:12px;"],
+    [:checkbox, :ids],
+    [:vote, lambda{|vote| 
+      html = []
+      if vote.vote == 1
+        html << "<span style='color:green'>"
+      else
+        html << "<span style='color:red'>"
+      end     
+      html << vote.vote
+      html << "</span>"
+      html.join("").html_safe
+    }, 'text-align:right;width:50px;'],
+    [:translator_id, lambda{|vote|
+      if vote.translator
+        link_to(vote.translator.name, :controller => "/tr8n/admin/translator", :action => :view, :id => vote.translator.id)
+      else
+        "Unknown" 
+      end  
+    }],
+    :updated_at, 
+    [:actions, lambda{|vote|
+      tr8n_actions_tag([
+        link_to_function("Delete", "deleteObjects('#{vote.id}')")
+      ])
+    }, 'text-align:right;white-space:nowrap;']
+  ]) %>
+<% end %>
+
+<%= will_filter_actions_bar_tag(@results, [
+  ['Delete Selected Votes', 'deleteObjects()'] 
+]) %>

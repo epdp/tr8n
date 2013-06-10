@@ -1,0 +1,41 @@
+<%= render :partial => "/tr8n/admin/common/header" %>
+<%= render :partial => "tabs" %>
+<%= tr8n_will_filter(@apps) %>
+
+<%=link_to_function("+ Register New Application", "Tr8n.UI.Lightbox.show('/tr8n/admin/applications/lb_update', {width:650})")%>
+
+<%= form_tag("", :id => "tr8n_form") do %>
+  <%=hidden_field_tag(:type, "application") %>
+  <%= will_filter_table_tag(@apps, :columns => [
+    [:icn, image_tag("tr8n/icons/cog.png"), :title => "", :style => "width:12px;"],
+    [:id, {:style => 'width:10px;'}],
+    [:name, lambda{|app|
+      link_to(app.name, {:action => :view, :id => app.id}) unless app.name.blank?
+    }, 'vertical-align:middle;'],
+    [:description, :style => 'vertical-align:middle;'],
+    [:domains, lambda{|app|
+      link_to(app.domains.count, "/tr8n/admin/applications/view/#{app.id}?mode=domains")
+    }, 'text-align:right;'],
+    [:languages, lambda{|app|
+      link_to(app.languages.count, "/tr8n/admin/applications/view/#{app.id}?mode=languages")
+    }, 'text-align:right'],
+    [:translators, lambda{|app|
+      link_to(app.translators.count, "/tr8n/admin/applications/view/#{app.id}?mode=translators")
+    }, 'text-align:right'],
+    [:sources, lambda{|app|
+      link_to(app.sources.count, "/tr8n/admin/applications/view/#{app.id}?mode=sources")
+    }, 'text-align:right'],
+    [:components, lambda{|app|
+      link_to(app.components.count, "/tr8n/admin/applications/view/#{app.id}?mode=components")
+    }, 'text-align:right'],
+    [:actions, lambda{|app|
+      tr8n_actions_tag([
+        link_to_function("Update", "Tr8n.UI.Lightbox.show('/tr8n/admin/applications/lb_update?id=#{app.id}', {width:650})"),
+        link_to_function("Delete", "deleteObjects('#{app.id}')")
+      ])
+    }, 'padding:5px;text-align:right;white-space:nowrap;']
+  ]) %>
+<% end %>
+
+<%= render :partial => "/tr8n/admin/common/footer" %>
+

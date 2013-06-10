@@ -278,6 +278,7 @@ module Tr8n
     #                           :to_sentence => true, 
     #                           :limit => 4, 
     #                           :separator => ',',
+    #                           :andor => 'and',  
     #                           :translate_items => false,
     #                           :minimizable => true
     #                         }
@@ -287,6 +288,9 @@ module Tr8n
     # acceptable params:  expandable, 
     #                     to_sentence, 
     #                     limit, 
+    #                     andor,
+    #                     more_label,
+    #                     less_label,
     #                     separator, 
     #                     translate_items,
     #                     minimizable
@@ -309,7 +313,8 @@ module Tr8n
         :minimizable => true,
         :to_sentence => true,
         :limit => 4,
-        :separator => ", "
+        :separator => ", ",
+        :andor => 'and'
       }
     
       if token_value.second.is_a?(Array) and token_value.size == 3
@@ -326,7 +331,7 @@ module Tr8n
       return objects.join(list_options[:separator]) unless list_options[:to_sentence]
 
       if objects.size <= list_options[:limit]
-        return "#{objects[0..-2].join(list_options[:separator])} #{"and".translate("List elements joiner", {}, options)} #{objects.last}"
+        return "#{objects[0..-2].join(list_options[:separator])} #{list_options[:andor].translate("", {}, options)} #{objects.last}"
       end
 
       display_ary = objects[0..(list_options[:limit]-1)]
@@ -334,23 +339,23 @@ module Tr8n
       result = "#{display_ary.join(list_options[:separator])}"
     
       unless list_options[:expandable]
-        result << " " << "and".translate("List elements joiner", {}, options) << " "
+        result << " " << list_options[:andor].translate("", {}, options) << " "
         result << "{num} {_others}".translate("List elements joiner", 
                   {:num => remaining_ary.size, :_others => "other".pluralize_for(remaining_ary.size)}, options)
         return result
       end             
              
       uniq_id = Tr8n::TranslationKey.generate_key(original_label, objects.join(","))         
-      result << "<span id=\"tr8n_other_link_#{uniq_id}\">" << " " << "and".translate("List elements joiner", {}, options) << " "
+      result << "<span id=\"tr8n_other_link_#{uniq_id}\">" << " " << list_options[:andor].translate("", {}, options) << " "
       result << "<a href='#' onClick=\"Tr8n.Effects.hide('tr8n_other_link_#{uniq_id}'); Tr8n.Effects.show('tr8n_other_elements_#{uniq_id}'); return false;\">"
-      result << "{num|| other}".translate("List elements joiner", {:num => remaining_ary.size}, options)
+      result << (list_options[:more_label] ? list_options[:more_label] : "{num|| other}".translate("List elements joiner", {:num => remaining_ary.size}, options))
       result << "</a></span>"
       result << "<span id=\"tr8n_other_elements_#{uniq_id}\" style='display:none'>" << list_options[:separator]
-      result << "#{remaining_ary[0..-2].join(list_options[:separator])} #{"and".translate("List elements joiner", {}, options)} #{remaining_ary.last}"
+      result << "#{remaining_ary[0..-2].join(list_options[:separator])} #{list_options[:andor].translate("", {}, options)} #{remaining_ary.last}"
 
       if list_options[:minimizable]
         result << "<a href='#' style='font-size:smaller;white-space:nowrap' onClick=\"Tr8n.Effects.show('tr8n_other_link_#{uniq_id}'); Tr8n.Effects.hide('tr8n_other_elements_#{uniq_id}'); return false;\"> "
-        result << "&laquo; less".translate("List elements joiner", {}, options)    
+        result << (list_options[:less_label] ? list_options[:less_label] : "{laquo} less".translate("List elements joiner", {}, options))
         result << "</a>"
       end
     
@@ -401,6 +406,10 @@ module Tr8n
       true
     end
 
+    def implied?
+      false
+    end
+
     ##############################################################################
     #
     # chooses the appropriate case for the token value. case is identified with ::
@@ -419,7 +428,7 @@ module Tr8n
       lcase.apply(object, value, options)
     end
   
-    def substitute(label, values = {}, options = {}, language = Tr8n::Config.current_language)
+    def substitute(translation_key, label, values = {}, options = {}, language = Tr8n::Config.current_language)
       # get the object from the values
       object = values[name_key]
 

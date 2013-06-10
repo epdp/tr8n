@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,20 +30,19 @@
 #  translator_id    integer         
 #  type             varchar(255)    
 #  definition       text            
-#  created_at       datetime        
-#  updated_at       datetime        
+#  created_at       datetime        not null
+#  updated_at       datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_language_rules_on_language_id_and_translator_id    (language_id, translator_id) 
-#  index_tr8n_language_rules_on_language_id                      (language_id) 
+#  tr8n_lr_lt    (language_id, translator_id) 
+#  tr8n_lr_l     (language_id) 
 #
 #++
 
 class Tr8n::LanguageRule < ActiveRecord::Base
   self.table_name = :tr8n_language_rules
-
-  attr_accessible :language_id, :translator_id, :definition
+  attr_accessible :language_id, :translator_id, :definition, :keyword
   attr_accessible :language, :translator
 
   after_save      :clear_cache
@@ -54,18 +53,45 @@ class Tr8n::LanguageRule < ActiveRecord::Base
   
   serialize :definition
 
+  def self.config
+    Tr8n::Config.rules_engine
+  end
+
+  def self.to_api_hash(opts = {})
+    hash = {:type => keyword}.merge(config)
+    if opts[:language]
+      hash[:rules] = []
+      where(:language_id => opts[:language].id).each do |lr|
+        hash[:rules] << lr.to_api_hash
+      end
+    end
+    hash
+  end
+
+  def self.rule_for_keyword_and_language(keyword, language = Tr8n::Config.current_language)
+    self.where("language_id = ? and keyword = ?", language.id, keyword).first
+  end
+
+  def self.cache_key(rule_id)
+    "language_rule_[#{rule_id}]"
+  end
+
+  def cache_key
+    self.class.cache_key(self.id)
+  end
+
   def definition
     @indifferent_def ||= HashWithIndifferentAccess.new(super)
   end
 
   def self.by_id(rule_id)
-    Tr8n::Cache.fetch("language_rule_#{rule_id}") do 
+    Tr8n::Cache.fetch(cache_key(rule_id)) do 
       find_by_id(rule_id)
     end
   end
   
   def self.for(language)
-    self.where("language_id = ?", language.id)
+    self.where("language_id = ?", language.id).all
   end
   
   def self.options
@@ -118,7 +144,40 @@ class Tr8n::LanguageRule < ActiveRecord::Base
   def self.transformable?
     true
   end
-  
+
+  def self.transform_params_to_options(params)
+    raise Tr8n::Exception.new("This method must be implemented in the extending rule") 
+  end
+
+  def self.transform(token, object, params, language)
+    if params.empty?
+      raise Tr8n::Exception.new("Invalid form for token #{token}")
+    end
+
+    options = transform_params_to_options(params)
+
+    matched_key = nil
+    options.keys.each do |key|
+      next if key == :other  # other is a special keyword - don't process it
+      rule = rule_for_keyword_and_language(key, language)
+      unless rule
+        raise Tr8n::Exception.new("Invalid rule name #{key} for transform token #{token}")
+      end
+
+      if rule.evaluate(object)
+        matched_key = key.to_sym
+        break
+      end
+    end
+
+    unless matched_key
+      return options[:other] if options[:other]
+      raise Tr8n::Exception.new("No rules matched for transform token #{token} : #{options.inspect} : #{object}")
+    end
+
+    options[matched_key]
+  end
+
   def save_with_log!(new_translator)
     if self.id
       if changed?
@@ -140,20 +199,12 @@ class Tr8n::LanguageRule < ActiveRecord::Base
   end
 
   def clear_cache
-    Tr8n::Cache.delete("language_rule_#{id}")
+    Tr8n::Cache.delete(cache_key)
   end
 
   ###############################################################
   ## Synchronization Methods
   ###############################################################
-  def to_sync_hash(token, opts = {})
-    {
-      "token" => token,  
-      "type" => self.class.keyword,
-      "definition" => definition
-    }
-  end
-  
   # {"locale"=>"ru", "label"=>"{count} сообщения", "rank"=>1, "rules"=>[
   #        {"token"=>"count", "type"=>"number", "definition"=>
   #             {"multipart"=>true, "part1"=>"ends_in", "value1"=>"2,3,4", "operator"=>"and", "part2"=>"does_not_end_in", "value2"=>"12,13,14"}
@@ -161,6 +212,19 @@ class Tr8n::LanguageRule < ActiveRecord::Base
   #     ]
   # }
 
+  def to_api_hash(opts = {})
+    if opts[:token]
+      return {
+        "token" => opts[:token],
+        "type" => self.class.keyword,
+        "keyword" => keyword,
+        "definition" => definition,
+      }
+    end
+
+    definition.merge(:keyword => keyword)
+  end
+  
   def self.create_from_sync_hash(lang, translator, rule_hash, opts = {})
     return unless rule_hash["token"] and rule_hash["type"] and rule_hash["definition"]
 
@@ -173,5 +237,6 @@ class Tr8n::LanguageRule < ActiveRecord::Base
     
     rule_class.create(:language => lang, :translator => translator, :definition => rule_hash["definition"])
   end
+
 
 end

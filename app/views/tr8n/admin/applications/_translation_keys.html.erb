@@ -1,0 +1,9 @@
+<div style="border:1px solid #ccc;padding:10px;background:#eee;margin-top:10px;margin-bottom:10px;">
+<%= form_tag({}, :id => :tr8n_query_form, :method => :get) do %>
+  <%=hidden_field_tag(:id, @app.id) %>
+  <%=hidden_field_tag(:mode, params[:mode]) %>
+  <%= render(:partial => "/tr8n/admin/common/search_module") %>
+<% end %>  
+</div>
+
+<%=render :partial => "/tr8n/admin/common/translation_keys" %>

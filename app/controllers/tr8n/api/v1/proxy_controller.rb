@@ -23,61 +23,29 @@
 
 class Tr8n::Api::V1::ProxyController < Tr8n::Api::V1::BaseController
 
+  def ping
+    render_response(:status => "Ready for business")
+  end
+
   def boot
-    uri = URI.parse(request.url)
-
-    script = []
-    script << "function addTr8nCSS(doc, src) {"
-    script << "var css = doc.createElement('link');"
-    script << "css.setAttribute('type', 'application/javascript');"
-    script << "css.setAttribute('href', src);"
-    script << "css.setAttribute('type', 'text/css');"
-    script << "css.setAttribute('rel', 'stylesheet');"
-    script << "css.setAttribute('media', 'screen');"
-    script << "doc.getElementsByTagName('head')[0].appendChild(css);"
-    script << "};"
-    script << "function addTr8nScript(doc, id, src, onload) {"
-    script << "var script = doc.createElement('script');"
-    script << "script.setAttribute('id', id);"
-    script << "script.setAttribute('type', 'application/javascript');"
-    script << "script.setAttribute('src', src);"
-    script << "script.setAttribute('charset', 'UTF-8');"
-    script << "if (onload) script.onload = onload;"
-    script << "doc.getElementsByTagName('head')[0].appendChild(script);"
-    script << "};"
-    script << "(function(doc) {if (doc.getElementById('tr8n-jssdk')) return;"
-
-    uri.path = "/assets/tr8n/tr8n.css"
-    script << "addTr8nCSS(doc, '#{uri.to_s}');"
-
-    if params[:debug]
-      uri.path = "/assets/tr8n/tr8n.js"    
-    else
-      uri.path = "/assets/tr8n/tr8n-compiled.js"    
-    end  
-    script << "addTr8nScript(doc, 'tr8n-jssdk', '#{uri.to_s}', function() {"
-
-    uri.path = "/tr8n/api/v1/proxy/init.js"    
-    script << "addTr8nScript(doc, 'tr8n-proxy', '#{uri.to_s}', function() {});"
-
-    script << "});}(document));"
-    render(:text => script.join(''), :content_type => "text/javascript")
+    render(:partial => "/tr8n/common/js/boot", :formats => [:js], :locals => {:uri => URI.parse(request.url)}, :content_type => "text/javascript")
   end
 
   def init
     script = []
 
     opts = {}
+
     opts[:scheduler_interval]         = Tr8n::Config.default_client_interval
     opts[:enable_inline_translations] = (Tr8n::Config.current_user_is_translator? and Tr8n::Config.current_translator.enable_inline_translations? and (not Tr8n::Config.current_language.default?))
     opts[:default_decorations]        = Tr8n::Config.default_decoration_tokens
     opts[:default_tokens]             = Tr8n::Config.default_data_tokens
     opts[:locale]                     = Tr8n::Config.current_language.locale
 
-    if params[:ext]
-      opts[:enable_text]              = true
+    if params[:text]
+      opts[:enable_text]              = (not params[:text].blank?)
     else
-      opts[:enable_tml]               = Tr8n::Config.enable_tml?
+      opts[:enable_tml]               = (not params[:tml].blank?) and Tr8n::Config.enable_tml?
     end
 
     opts[:rules]                      = { 
@@ -85,17 +53,16 @@ class Tr8n::Api::V1::ProxyController < Tr8n::Api::V1::BaseController
       :list   => Tr8n::Config.rules_engine[:gender_list_rule],  :date   => Tr8n::Config.rules_engine[:date_rule]
     }
 
-    uri = URI.parse(request.url)
-    host_url = "#{uri.scheme}://#{uri.host}#{uri.port ? ":#{uri.port}" : ''}"
+    domain = Tr8n::TranslationDomain.find_or_create(request.env['HTTP_REFERER'])
+    Tr8n::Config.set_application(domain.application)
 
-    script << "Tr8n.host = '#{host_url}';"
+    source = params[:source] || Tr8n::TranslationSource.normalize_source(request.env['HTTP_REFERER']) || 'undefined'
+    Tr8n::Config.set_source(Tr8n::TranslationSource.find_or_create(source, domain.application))
 
-    script << "Tr8n.SDK.Proxy.init(#{opts.to_json});"
+    language = Tr8n::Language.for(params[:language] || params[:locale]) || Tr8n::Config.current_language
+    Tr8n::Config.set_language(language)
 
-    params[:source] ||= request.env['HTTP_REFERER']
-
-    source_ids = Tr8n::TranslationSource.where(:source => params[:source]).all.collect{|source| source.id}
-    
+    source_ids = Tr8n::TranslationSource.where(:source => source).all.collect{|src| src.id}
     if source_ids.empty?
       conditions = ["1=2"]
     else
@@ -108,19 +75,78 @@ class Tr8n::Api::V1::ProxyController < Tr8n::Api::V1::BaseController
       translations << tkey.translate(Tr8n::Config.current_language, {}, {:api => true})
     end
 
-    script << "Tr8n.SDK.Proxy.registerTranslationKeys(#{translations.to_json});"
-
-    if Tr8n::Config.enable_google_suggestions? and Tr8n::Config.current_user_is_translator?
-      script << "Tr8n.google_api_key = '#{Tr8n::Config.google_api_key}';"
-    end
-
-    if Tr8n::Config.enable_keyboard_shortcuts?
-      Tr8n::Config.default_shortcuts.each do |key, data|       
-        script << "shortcut.add('#{key}', function() {#{data['script']}});"
-      end
-    end
-
-    render(:text => script.join(''), :content_type => "text/javascript")
+    render(:partial => "/tr8n/common/js/init", :formats => [:js], :locals => {:uri => URI.parse(request.url), :opts => opts, :translations => translations, :source => source.to_s}, :content_type => "text/javascript")
   end
   
+  # Used primarely by JavaScript. 
+  # Unlike server-side, Javascript needs to get transaltions back even after registration
+  def translate
+    domain = Tr8n::TranslationDomain.find_or_create(request.env['HTTP_REFERER'])
+    language = Tr8n::Language.for(params[:language] || params[:locale]) || tr8n_current_language
+    Tr8n::Config.set_application(domain.application)
+    Tr8n::Config.set_language(language)
+
+    return render_response(translate_phrase(language, params, {:source => source, :api => :translate, :application => domain.application})) if params[:label]
+    
+    # API signature
+    # {:source => "", :language => "", :phrases => [{:label => ""}]}
+    
+    # get all phrases for the specified source 
+    # this can be used by a parallel application or a JavaScript Client SDK that needs to build a page cache
+    if params[:batch] == "true" or params[:cache] == "true"
+      if params[:sources].blank? and params[:source].blank?
+        return render_response({"error" => "No source/sources have been provided for the batch request."})
+      end
+      
+      source_names = params[:sources] || [params[:source]]
+      sources = Tr8n::TranslationSource.find(:all, :conditions => ["source in (?)", source_names])
+      source_ids = sources.collect{|source| source.id}
+      
+      if source_ids.empty?
+        conditions = ["1=2"]
+      else
+        conditions = ["(id in (select distinct(translation_key_id) from tr8n_translation_key_sources where translation_source_id in (?)))"]
+        conditions << source_ids.uniq
+      end
+      
+      translations = []
+      Tr8n::TranslationKey.find(:all, :conditions => conditions).each_with_index do |tkey, index|
+        trn = tkey.translate(language, {}, {:source => source, :url => source, :api => :cache})
+        translations << trn 
+      end
+      
+      return render_response({:phrases => translations})
+    elsif params[:phrases]
+      
+      phrases = []
+      begin
+        phrases = HashWithIndifferentAccess.new({:data => JSON.parse(params[:phrases])})[:data]
+      rescue Exception => ex
+        return render_response({"error" => "Invalid request. JSON parsing failed: #{ex.message}"})
+      end
+
+      translations = []
+      phrases.each do |phrase|
+        phrase = {:label => phrase} if phrase.is_a?(String)
+        language = phrase[:locale].blank? ? Tr8n::Config.default_language.locale : (Tr8n::Language.for(phrase[:locale]) || Tr8n::Language.find_by_google_key(phrase[:locale]))
+
+        translations << translate_phrase(language, phrase, {:source => source, :url => request.env['HTTP_REFERER'], :api => :translate, :locale => language.locale, :application => domain.application})
+      end
+
+      return render_response({:phrases => translations})    
+    end
+    
+    render_response(:phrases => [])
+  rescue Tr8n::KeyRegistrationException => ex
+    render_response({"error" => ex.message})
+  end
+
+private
+
+  def translate_phrase(language, phrase, opts = {})    
+    return "" if phrase[:label].strip.blank?
+    translation_key = Tr8n::TranslationKey.find_or_create(phrase[:label], phrase[:description], opts)
+    translation_key.translate(language, {}, opts)
+  end
+
 end

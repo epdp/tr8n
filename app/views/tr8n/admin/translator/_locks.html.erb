@@ -1,0 +1,40 @@
+<%= will_filter_scripts_tag %>
+
+<%= form_tag("", :id => "tr8n_form") do %>
+<%=hidden_field_tag(:type, :lock) %>
+
+<%= will_filter_table_tag(@results, :columns => [
+  [:icn, lambda{|lock|
+    if lock.locked?
+      image_tag("tr8n/icons/lock.png")
+    else
+      image_tag("tr8n/icons/lock_open.png")
+    end
+  }, :title => "", :style => "width:12px;"],
+  [:checkbox, :ids],    
+  :locked, 
+  [:language_id, lambda{|lock|
+    if lock.language
+      link_to(lock.language.english_name, :controller => "/tr8n/admin/language", :action => :view, :lang_id => lock.language.id)
+    else
+       "Deleted Language"    
+    end  
+  }], 
+  :updated_at,
+  [:actions, lambda{|lock|
+    html = []
+    html << link_to_function("Delete", "deleteObjects('#{lock.id}')")
+    if lock.locked?
+      html << link_to("Unlock", {:controller => "/tr8n/admin/translation_key", :action => :update_lock, :lock_id => lock.id, :locked => "false"}, {:confirm => "Are you sure you want to lock this key in #{lock.language.english_name}?"})
+    else
+      html << link_to("Lock", {:controller => "/tr8n/admin/translation_key", :action => :update_lock, :lock_id => lock.id, :locked => "true"}, {:confirm => "Are you sure you want to unlock this key in #{lock.language.english_name}?"})
+    end
+    html.join(' | ').html_safe
+  }, 'padding:5px;text-align:right;white-space:nowrap;']
+
+]) %>
+<% end %>
+
+<%= will_filter_actions_bar_tag(@results, [
+  ['Delete Selected Locks', 'deleteObjects()'] 
+]) %>

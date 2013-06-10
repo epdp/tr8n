@@ -1,0 +1,33 @@
+<%= will_filter_scripts_tag %>
+
+<%= form_tag({}, :id => "tr8n_form") do %>
+  <%= hidden_field_tag(:type, "source") %>
+  <%= will_filter_table_tag(@results, :columns => [
+    [:icn, image_tag("tr8n/icons/page_white_code.png"), :title => "", :style => "width:12px;"],
+    [:checkbox, 'ids'],     
+    :id,
+    [:source, lambda{|source| 
+      link_to(source.source,  :controller => "/tr8n/admin/sources", :action => :view, :id => source.id)
+    }],
+    [:name, lambda{|source| 
+        source.name
+    }],
+    [:description, lambda{|source| 
+        source.description
+    }],
+    [:keys, lambda{|source|
+      link_to(source.total_metric.key_count, "/tr8n/admin/sources/view?mode=translation_keys&id=#{source.id}")
+    }, 'text-align:right;width:100px;'],
+    [:actions, lambda{|source|
+      tr8n_actions_tag([
+        link_to("Recalculate", {:controller => "/tr8n/admin/sources", :action => :recalculate_metric, :metric_id => source.total_metric.id}),
+        link_to_function("Update", "Tr8n.UI.Lightbox.show('/tr8n/admin/sources/lb_update?id=#{source.id}', {height:350})"),
+        link_to_function("Delete", "deleteObjects('#{source.id}')")
+      ])
+    }, 'padding:5px;text-align:right;white-space:nowrap;width:200px;']
+  ]) %>
+<% end %>
+
+<%= will_filter_actions_bar_tag(@results, [
+  ['Delete Selected Sources', 'deleteObjects()']
+]) %>

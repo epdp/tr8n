@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8nhub.com
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,7 +28,7 @@ class Tr8n::Admin::ClientsdkController < Tr8n::Admin::BaseController
   end
   
   def lb_samples
-    render :layout => false
+    render_lightbox
   end
 
 end

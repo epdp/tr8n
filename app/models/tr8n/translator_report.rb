@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -32,18 +32,17 @@
 #  object_type      varchar(255)    
 #  reason           varchar(255)    
 #  comment          text            
-#  created_at       datetime        
-#  updated_at       datetime        
+#  created_at       datetime        not null
+#  updated_at       datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_translator_reports_on_translator_id    (translator_id) 
+#  tr8n_tr_t    (translator_id) 
 #
 #++
 
 class Tr8n::TranslatorReport < ActiveRecord::Base
-  self.table_name = :tr8n_translator_reports
-  
+  self.table_name = :tr8n_translator_reports  
   attr_accessible :translator_id, :state, :object_id, :object_type, :reason, :comment
   attr_accessible :translator, :object
 

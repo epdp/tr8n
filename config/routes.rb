@@ -22,28 +22,32 @@
 #++
 
 Tr8n::Engine.routes.draw do
-  [:awards, :chart, :dashboard, :forum, :glossary, :help, :language_cases,
+  [:awards, :chart, :forum, :glossary, :help, :language_cases,
    :language, :phrases, :translations, :translator].each do |ctrl|
     match "#{ctrl}(/:action)", :controller => "#{ctrl}"
   end
   
-  [:chart, :clientsdk, :forum, :glossary, :language, :translation, 
+  [:applications, :components, :sources, :chart, :clientsdk, :forum, :glossary, :language, :translation, 
    :translation_key, :translator, :domain, :metrics].each do |ctrl|
     match "admin/#{ctrl}(/:action)", :controller => "admin/#{ctrl}"
   end
   
-  [:application, :language, :translation, :translator, :proxy].each do |ctrl|
+  [:application, :source, :component, :language, :translation_key, :translation, :translator, :proxy, :oauth].each do |ctrl|
     match "api/v1/#{ctrl}(/:action)", :controller => "api/v1/#{ctrl}"
+  end
+
+  [:translator, :language_selector, :language_case_manager, :utils].each do |ctrl|
+    match "tools/#{ctrl}(/:action)", :controller => "tools/#{ctrl}"
   end
   
   match "api/v1/language/translate.js", :controller => "api/v1/language", :action => "translate"
 
   namespace :tr8n do
-    root :to => "dashboard#index"
+    root :to => "translator#index"
     namespace :admin do
-      root :to => "language#index"
+      root :to => "applications#index"
     end
   end
   
-  root :to => "dashboard#index"
+  root :to => "translator#index"
 end

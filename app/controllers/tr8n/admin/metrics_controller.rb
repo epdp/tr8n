@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8nhub.com
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -37,6 +37,10 @@ class Tr8n::Admin::MetricsController < Tr8n::Admin::BaseController
 
   def translators
     @metrics = Tr8n::TranslatorMetric.filter(:params => params, :filter => Tr8n::TranslatorMetricFilter)
+  end
+
+  def top_translators
+    @languages = Tr8n::Language.enabled_languages
   end
 
 end

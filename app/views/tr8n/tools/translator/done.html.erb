@@ -1,0 +1,18 @@
+<div style="padding:10px; padding-bottom:0px;">
+  <div class="section" style="text-align:center;font-size:18px;padding:20px;">
+    <%=tra("Thank you!") %>
+  </div>
+</div>
+
+<script>
+  Tr8n.Utils.addEvent(window, "load", function(event) {
+    window.setTimeout(function() {
+      hideTranslator();
+      <% if @translations %>        
+        Tr8n.postMessage({'subject': 'proxy', 'action': 'update_translations', 'translations': <%= @translations.to_json.html_safe %>}, '<%=params[:origin]%>');
+      <% else %>
+        reloadOrigin();
+      <% end %>
+    }, 500);
+  });
+</script>

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -34,20 +34,19 @@
 #  negative_votes           integer     default = 0
 #  accepted_translations    integer     default = 0
 #  rejected_translations    integer     default = 0
-#  created_at               datetime    
-#  updated_at               datetime    
+#  created_at               datetime    not null
+#  updated_at               datetime    not null
 #
 # Indexes
 #
-#  index_tr8n_translator_metrics_on_created_at                       (created_at) 
-#  index_tr8n_translator_metrics_on_translator_id_and_language_id    (translator_id, language_id) 
-#  index_tr8n_translator_metrics_on_translator_id                    (translator_id) 
+#  tr8n_tm_c     (created_at) 
+#  tr8n_tm_tl    (translator_id, language_id) 
+#  tr8n_tm_t     (translator_id) 
 #
 #++
 
 class Tr8n::TranslatorMetric < ActiveRecord::Base
-  self.table_name = :tr8n_translator_metrics
-  
+  self.table_name = :tr8n_translator_metrics  
   attr_accessible :translator_id, :language_id, :total_translations, :total_votes, :positive_votes, :negative_votes, :accepted_translations, :rejected_translations
   attr_accessible :translator, :language
 
@@ -74,7 +73,9 @@ class Tr8n::TranslatorMetric < ActiveRecord::Base
   end
 
   # updated when an action is done by the translator
-  def update_metrics!
+  def update_metrics!(opts = {})
+    return Tr8n::OfflineTask.schedule(self, :update_metrics!, {:offline => true}) unless opts[:offline]
+
     if language
       self.total_translations = Tr8n::Translation.where("translator_id = ? and language_id = ?", translator.id, language.id).count
       self.total_votes = Tr8n::TranslationVote.where("tr8n_translation_votes.translator_id = ? and tr8n_translations.language_id = ?", translator.id, language.id).joins(:translation).count
@@ -91,7 +92,9 @@ class Tr8n::TranslatorMetric < ActiveRecord::Base
   end
   
   # updated when an action is done to the translator's translations
-  def update_rank!
+  def update_rank!(opts = {})
+    return Tr8n::OfflineTask.schedule(self, :update_rank!, {:offline => true}) unless opts[:offline]
+    
     if language
       self.accepted_translations = Tr8n::Translation.where("translator_id = ? and language_id = ? and rank >= ?", translator.id, language.id, language.threshold).count
       self.rejected_translations = Tr8n::Translation.where("translator_id = ? and language_id = ? and rank < ?", translator.id, language.id, 0).count
@@ -112,4 +115,5 @@ class Tr8n::TranslatorMetric < ActiveRecord::Base
     return total_translations unless accepted_translations and rejected_translations
     total_translations - accepted_translations - rejected_translations
   end
+
 end

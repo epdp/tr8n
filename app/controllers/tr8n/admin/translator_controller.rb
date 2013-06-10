@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8nhub.com
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,8 +28,34 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
   end
 
   def view
-    @translator = Tr8n::Translator.find(params[:translator_id])
+    @translator = Tr8n::Translator.find(params[:id])
     redirect_to(:action => :index) unless @translator
+
+    klass = {
+      :applications => Tr8n::ApplicationTranslator,
+      :assignments => Tr8n::ComponentTranslator,
+      :metrics => Tr8n::TranslatorMetric,
+      :languages => Tr8n::LanguageUser,
+      :translations => Tr8n::Translation,
+      :votes => Tr8n::TranslationVote,
+      :locks => Tr8n::TranslationKeyLock,
+      :following => Tr8n::TranslatorFollowing,
+      :messages => Tr8n::LanguageForumMessage,
+      :reports => Tr8n::TranslatorReport,
+      :activity => Tr8n::TranslatorLog,
+    }[params[:mode].to_sym] if params[:mode]
+    klass ||= Tr8n::TranslatorLog
+
+    if params[:mode] == "languages"
+      filter = {"wf_c0" => "user_id", "wf_o0" => "is", "wf_v0_0" => @translator.user_id}
+      extra_params = {:user_id => @translator.user_id, :mode => params[:mode]}
+    else
+      filter = {"wf_c0" => "translator_id", "wf_o0" => "is", "wf_v0_0" => @translator.id}
+      extra_params = {:translator_id => @translator.id, :mode => params[:mode]}
+    end
+    
+    @results = klass.filter(:params => params.merge(filter))
+    @results.wf_filter.extra_params.merge!(extra_params)
   end
 
   def delete
@@ -55,17 +81,9 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
     redirect_to_source
   end
 
-  def update
+  def update_level
     @translator = Tr8n::Translator.find(params[:translator_id])
-
-    unless params[:new_level].blank?
-      @translator.update_level!(tr8n_current_user, params[:new_level], params[:reason])
-    end
-
-    unless params[:new_voting_power].blank?
-      @translator.update_voting_power!(tr8n_current_user, params[:new_voting_power].to_i)
-    end
-
+    @translator.update_level!(tr8n_current_user, params[:new_level], params[:reason])
     redirect_to_source
   end
 
@@ -77,7 +95,7 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
   
   def update_stats
     Tr8n::Translator.all.each do |trans|
-      trans.update_metrics!
+      trans.update_total_metrics!
     end
   
     redirect_to :action => :index
@@ -85,7 +103,7 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
    
   def lb_register
     @translator = Tr8n::Translator.new    
-    render :layout => false
+    render_lightbox
   end
 
   def register
@@ -96,9 +114,12 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
     end
     
     translator = Tr8n::Translator.find_by_user_id(user.id)
-    translator ||= Tr8n::Translator.create(:user_id => params[:translator][:user_id])
+    if translator
+      return redirect_to_source
+    end
     
-    redirect_to(:controller => "/tr8n/help", :action => "lb_done", :origin => params[:origin])
+    Tr8n::Translator.create(:user_id => params[:translator][:user_id])
+    redirect_to_source
   end
 
   def following
@@ -113,34 +134,18 @@ class Tr8n::Admin::TranslatorController < Tr8n::Admin::BaseController
     @logs = Tr8n::TranslatorLog.filter(:params => params, :filter => Tr8n::TranslatorLogFilter)
   end
 
+  def metrics
+    @metrics = Tr8n::TranslatorMetric.filter(:params => params, :filter => Tr8n::TranslatorMetricFilter)
+  end
+
   def ip_locations
     @ip_locations = Tr8n::IpLocation.filter(:params => params, :filter => Tr8n::IpLocationFilter)
   end
      
-  def lb_merge
-    @translators = params[:ids] || ''
-    @translators = @translators.split(',').select { |id| id =~ /^\d+$/ }
-    @translators = Tr8n::Translator.where("id in (?)", @translators)
-    
-    render :layout => false
-  end
-
-  def merge
-    master = Tr8n::Translator.find_by_id(params[:translator_id]) if params[:translator_id]
-    unless master 
-      trfe("Master translator was not selected")
-      return redirect_to_source
-    end
-
-    translators = params[:ids] || ''
-    translators = translators.split(',').select { |id| id =~ /^\d+$/ }
-    translators = Tr8n::Translator.where("id in (?)", translators)
-    
-    translators.each do |translator|
-      next if translator == master
-      translator.merge_into(master, :delete => true)
-    end
-
+  def generate_access_key
+    @translator = Tr8n::Translator.find(params[:translator_id])
+    redirect_to(:action => :index) unless @translator
+    @translator.generate_access_key!(tr8n_current_user)
     redirect_to_source
-  end
+  end   
 end

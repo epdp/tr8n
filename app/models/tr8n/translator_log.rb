@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -32,14 +32,14 @@
 #  action_level     integer         
 #  reason           varchar(255)    
 #  reference        varchar(255)    
-#  created_at       datetime        
-#  updated_at       datetime        
+#  created_at       datetime        not null
+#  updated_at       datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_translator_logs_on_created_at       (created_at) 
-#  index_tr8n_translator_logs_on_user_id          (user_id) 
-#  index_tr8n_translator_logs_on_translator_id    (translator_id) 
+#  tr8n_tl_c    (created_at) 
+#  tr8n_tl_u    (user_id) 
+#  tr8n_tl_t    (translator_id) 
 #
 #++
 
@@ -62,7 +62,8 @@ class Tr8n::TranslatorLog < ActiveRecord::Base
   :deleted_language_rule, :added_language_rule, :updated_language_rule, 
   :deleted_language_case, :added_language_case, :updated_language_case, 
   :used_abusive_language, :added_translation, :updated_translation, :deleted_translation, 
-  :voted_on_translation, :locked_translation_key, :unlocked_translation_key, :got_new_level]
+  :voted_on_translation, :locked_translation_key, :unlocked_translation_key, :got_new_level, 
+  :added_relationship_key]
   
   
   def self.log_admin(translator, action, user, reason = "n/a", reference = nil)

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -26,61 +26,91 @@
 # Table name: tr8n_translation_sources
 #
 #  id                       INTEGER         not null, primary key
+#  parent_id                integer         
 #  source                   varchar(255)    
 #  translation_domain_id    integer         
-#  created_at               datetime        
-#  updated_at               datetime        
+#  completeness             integer         
+#  name                     varchar(255)    
+#  description              varchar(255)    
+#  url                      varchar(255)    
+#  key_count                integer         
+#  created_at               datetime        not null
+#  updated_at               datetime        not null
 #
 # Indexes
 #
-#  tr8n_sources_source    (source) 
+#  tr8n_ts_pid    (parent_id) 
+#  tr8n_ts_s      (source) 
 #
 #++
 
 class Tr8n::TranslationSource < ActiveRecord::Base
   self.table_name = :tr8n_translation_sources
-
-  attr_accessible :source, :translation_domain_id
-  attr_accessible :translation_domain
+  attr_accessible :source, :translation_domain_id, :url, :name, :description, :translation_domain, :key_count, :application_id, :application
 
   after_destroy   :clear_cache
+  after_save      :clear_cache
   
+  belongs_to  :application,                   :class_name => "Tr8n::Application"
   belongs_to  :translation_domain,            :class_name => "Tr8n::TranslationDomain"
   
-  has_many    :translation_key_sources,       :class_name => "Tr8n::TranslationKeySource",  :dependent => :destroy
-  has_many    :translation_keys,              :class_name => "Tr8n::TranslationKey",        :through => :translation_key_sources
-  has_many    :translation_source_languages,  :class_name => "Tr8n::TranslationSourceLanguage"
+  has_many    :translation_key_sources,       :class_name => "Tr8n::TranslationKeySource",      :dependent => :destroy
+  has_many    :translation_keys,              :class_name => "Tr8n::TranslationKey",            :through => :translation_key_sources
+  has_many    :translation_source_languages,  :class_name => "Tr8n::TranslationSourceLanguage", :dependent => :destroy
+  has_many    :translation_source_metrics,    :class_name => 'Tr8n::TranslationSourceMetric',   :dependent => :destroy
+  has_many    :component_sources,             :class_name => "Tr8n::ComponentSource",           :dependent => :destroy
+  has_many    :components,                    :class_name => "Tr8n::Component",                 :through => :component_sources
   
   alias :domain   :translation_domain
   alias :sources  :translation_key_sources
   alias :keys     :translation_keys
+  alias :metrics  :translation_source_metrics
+  
+  def self.normalize_source(url)
+    return nil if url.blank?
+    uri = URI.parse(url)
+    path = uri.path
+    return "/" if uri.path.blank?
+    return path if path == "/"
 
-  def self.cache_key(source)
-    "translation_source_#{source}"
+    # always must start with /
+    path = "/#{path}" if path[0] != "/"
+    # should not end with /
+    path = path[0..-2] if path[-1] == "/"
+    path
+  end
+
+  def self.cache_key(application, source_name)
+    "source_[#{application.id}]_[#{source_name.to_s}]"
   end
 
   def cache_key
-    self.class.cache_key(source)
-  end
-
-  def self.find_or_create(url, translation_domain = nil)
-    # we don't want parameters in the source
-    source = url.split("://").last.split("?").first
-    Tr8n::Cache.fetch(cache_key(source)) do 
-      translation_domain ||= Tr8n::TranslationDomain.find_or_create(url)
-      translation_source = where("source = ? and translation_domain_id = ?", source, translation_domain.id).first
-      translation_source ||= create(:source => source, :translation_domain => translation_domain)
-      translation_source.update_attributes(:translation_domain => translation_domain) unless translation_source.translation_domain
-      translation_source
-    end  
+    self.class.cache_key(application || Tr8n::Config.current_application, source)
   end
 
   def clear_cache
     Tr8n::Cache.delete(cache_key)
   end
+  
+  def self.find_or_create(source_name, application = Tr8n::Config.current_application)
+    return source_name if source_name.is_a?(Tr8n::TranslationSource)
+
+    Tr8n::Cache.fetch(cache_key(application, source_name)) do 
+      ts = where("application_id = ? and source = ?", application.id, source_name).first 
+      ts ||= begin
+        src = create(:application => application, :source => source_name)
+        src.total_metric.update_metrics!
+        src
+      end
+    end  
+  end
+
+  def total_metric(language = Tr8n::Config.current_language)
+    Tr8n::TranslationSourceMetric.find_or_create(self, language)
+  end
 
   def cache_key_for_language(language = Tr8n::Config.current_language)
-    "valid_translations_for_source_#{self.id}_and_locale_#{language.locale}"
+    "translations_for_[#{self.source}]_#{language.locale}"
   end
 
   def cache(language = Tr8n::Config.current_language)
@@ -111,4 +141,46 @@ class Tr8n::TranslationSource < ActiveRecord::Base
     Tr8n::Cache.delete(cache_key_for_language(language))
   end
 
+  def self.options
+    @sources = Tr8n::TranslationSource.find(:all, :order => "source asc").collect{|src| [src.source, src.source]}
+  end
+
+  def title
+    return source if name.blank?
+    name
+  end
+
+  def name_and_source
+    return source if name.blank?
+    "#{name} (#{source})"
+  end
+
+  def translator_authorized?(translator = Tr8n::Config.current_translator)
+    components.each do |comp|
+      return false unless comp.translator_authorized?(translator)
+    end
+    true
+  end
+
+  def reset(opts = {})
+    return Tr8n::OfflineTask.schedule(self, :reset, {:offline => true}) unless opts[:offline]
+
+    translation_key_sources.each do |tks|
+      tks.destroy
+    end
+    metrics.each do |m|
+      m.update_metrics!(:offline => true)
+    end
+  end
+
+  def to_api_hash(opts = {})
+    {
+      :id => self.id,
+      :source => self.source,
+      :url => self.url,
+      :name => self.name,
+      :description => self.description,
+      :key_count => self.key_count
+    }
+  end
 end

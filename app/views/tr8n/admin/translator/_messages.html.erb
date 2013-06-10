@@ -1,0 +1,29 @@
+<%= will_filter_scripts_tag %>
+
+<%= form_tag("", :id => "tr8n_form") do %>
+  <%=hidden_field_tag(:type, :message) %>
+  <%= will_filter_table_tag(@results, :columns => [
+    [:icn, image_tag("tr8n/icons/comment.png"), :title => "", :style => "width:12px;"],
+    [:checkbox, :ids],        
+    [:language_id, lambda{|message|
+      if message.language
+        link_to(message.language.english_name, :controller => "/tr8n/admin/language", :action => :view, :lang_id => message.language.id)
+      else
+         "Deleted Language"    
+      end  
+    }], 
+
+    :message,
+    :created_at,
+    [:actions, lambda{|message|
+      tr8n_actions_tag([
+        link_to_function("Delete", "deleteObjects('#{message.id}')")
+      ])
+    }, 'padding:5px;text-align:right;white-space:nowrap;'] 
+  ]) %>
+<% end %>
+
+
+<%= will_filter_actions_bar_tag(@results, [
+  ['Delete Selected Messages', 'deleteObjects()'] 
+]) %>

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,20 +30,19 @@
 #  language_forum_topic_id    integer     not null
 #  translator_id              integer     not null
 #  message                    text        not null
-#  created_at                 datetime    
-#  updated_at                 datetime    
+#  created_at                 datetime    not null
+#  updated_at                 datetime    not null
 #
 # Indexes
 #
-#  tr8n_forum_msgs_lang_id_topic_id    (language_id, language_forum_topic_id) 
-#  tr8n_forums_msgs_translator_id      (translator_id) 
-#  tr8n_forum_msgs_lang_id             (language_id) 
+#  tr8n_lfm_ll    (language_id, language_forum_topic_id) 
+#  tr8n_lfm_t     (translator_id) 
+#  tr8n_lfm_l     (language_id) 
 #
 #++
 
 class Tr8n::LanguageForumMessage < ActiveRecord::Base
   self.table_name = :tr8n_language_forum_messages
-
   attr_accessible :language_id, :language_forum_topic_id, :translator_id, :message
   attr_accessible :language, :translator, :language_forum_topic
 
@@ -51,10 +50,17 @@ class Tr8n::LanguageForumMessage < ActiveRecord::Base
   belongs_to :translator,             :class_name => "Tr8n::Translator"  
   belongs_to :language_forum_topic,   :class_name => "Tr8n::LanguageForumTopic"
   
+  after_create :distribute_notification
+
   alias :topic :language_forum_topic
 
   def toHTML
     return "" unless message
     ERB::Util.html_escape(message).gsub("\n", "<br>")
   end
+
+  def distribute_notification
+    Tr8n::Notification.distribute(self)    
+  end
+
 end

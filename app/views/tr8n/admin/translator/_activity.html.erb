@@ -1,0 +1,15 @@
+  <%= will_filter_scripts_tag %>
+
+  <%= will_filter_table_tag(@results, :columns => [
+    [:icn, image_tag("tr8n/icons/status_away.png"), :title => "", :style => "width:12px;"],
+    :created_at, 
+    :action, 
+    :reference,
+    [:description, lambda{|log|
+      html = []
+      html << "<div style='#{log.decoration}'>"
+      html << log.describe
+      html << "</div>"
+      html.join("").html_safe
+    }]
+  ]) %>

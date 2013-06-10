@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8nhub.com
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -31,6 +31,59 @@ class Tr8n::Admin::BaseController < Tr8n::BaseController
   
   layout Tr8n::Config.site_info[:admin_layout]
   
+  def delete
+    params[:ids] ||= []
+    params[:ids] = [params[:ids]] unless params[:ids].is_a?(Array)
+    params[:ids].each do |id|
+      case params[:type]
+      when "domain"
+        object = Tr8n::TranslationDomain.find_by_id(id)
+      when "source"
+        object = Tr8n::TranslationSource.find_by_id(id)
+      when "application"
+        object = Tr8n::Application.find_by_id(id)
+      when "component"
+        object = Tr8n::Component.find_by_id(id)
+      when "key_source"
+        object = Tr8n::TranslationKeySource.find_by_id(id)
+      when "translation_key"
+        object = Tr8n::TranslationKey.find_by_id(id)
+      when "glossary"
+        object = Tr8n::Glossary.find_by_id(id)
+      when "topic"
+        object = Tr8n::LanguageForumTopic.find_by_id(id)
+      when "message"
+        object = Tr8n::LanguageForumMessage.find_by_id(id)
+      when "translation"
+        object = Tr8n::Translation.find_by_id(id)
+      when "application_language"
+        object = Tr8n::ApplicationLanguage.find_by_id(id)
+      when "component_language"
+        object = Tr8n::ComponentLanguage.find_by_id(id)
+      when "application_translator"
+        object = Tr8n::ApplicationTranslator.find_by_id(id)
+      when "component_translator"
+        object = Tr8n::ComponentTranslator.find_by_id(id)
+      when "component_source"
+        object = Tr8n::ComponentSource.find_by_id(id)
+      when "lock"
+        object = Tr8n::TranslationKeyLock.find_by_id(id)
+      when "comment"
+        object = Tr8n::TranslationKeyComment.find_by_id(id)
+      when "vote"
+        object = Tr8n::TranslationVote.find_by_id(id)
+      when "translator"
+        object = Tr8n::Translator.find_by_id(id)
+      when "glossary"
+        object = Tr8n::Glossary.find_by_id(id)
+      else 
+        next  
+      end
+      object.destroy if object
+    end  
+    redirect_to_source
+  end  
+
 private
 
   def validate_tr8n_enabled
@@ -43,8 +96,10 @@ private
   
   def tr8n_admin_tabs
     [
+        {"title" => "Applications", "description" => "Admin tab", "controller" => "applications"},
+        {"title" => "Components", "description" => "Admin tab", "controller" => "components"},
+        {"title" => "Sources", "description" => "Admin tab", "controller" => "sources"},
         {"title" => "Languages", "description" => "Admin tab", "controller" => "language"},
-        {"title" => "Domains", "description" => "Admin tab", "controller" => "domain"},
         {"title" => "Translation Keys", "description" => "Admin tab", "controller" => "translation_key"},
         {"title" => "Translations", "description" => "Admin tab", "controller" => "translation"},
         {"title" => "Translators", "description" => "Admin tab", "controller" => "translator"},

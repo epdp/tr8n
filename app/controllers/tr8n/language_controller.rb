@@ -24,8 +24,8 @@
 module Tr8n
   class LanguageController < Tr8n::BaseController
 
-    before_filter :validate_guest_user, :except => [:select, :switch, :translator_splash_screen, :toggle_inline_translations, :change, :table]
-    before_filter :validate_current_translator, :except => [:select, :switch, :translator_splash_screen, :toggle_inline_translations, :change, :table]
+    before_filter :validate_guest_user, :except => [:select, :switch, :toggle_inline_translations, :change, :table]
+    before_filter :validate_current_translator, :except => [:select, :switch, :toggle_inline_translations, :change, :table]
     before_filter :validate_language_management, :only => [:index]
     before_filter :validate_locale_is_not_shadowed
 
@@ -83,6 +83,7 @@ module Tr8n
         old_rule_ids = tr8n_current_language.rules.collect{|rule| rule.id}
         parse_language_rules.each do |rule|
           rule.language = tr8n_current_language
+          rule.keyword = rule[:keyword]
           rule.save_with_log!(tr8n_current_translator)
           old_rule_ids.delete(rule.id)
         end
@@ -202,7 +203,6 @@ module Tr8n
       render(:partial => "edit_language_case_rules", :locals => {:lcase => lcase, :case_index => case_index})
     end
 
-
     # language selector window
     def select
       @inline_translations_allowed = false
@@ -225,25 +225,7 @@ module Tr8n
       @all_languages = Tr8n::Language.enabled_languages
       @user_languages = Tr8n::LanguageUser.languages_for(tr8n_current_user) unless tr8n_current_user_is_guest?
 
-      if params[:lightbox]
-        render :partial => "select"
-      else
-        render :layout => false
-      end      
-    end
-
-    # language selector management functions
-    def lists
-      if request.post? 
-        if params[:language_action] == "remove"
-          lu = Tr8n::LanguageUser.find(:first, :conditions => ["language_id = ? and user_id = ?", params[:language_id].to_i, tr8n_current_user.id])
-          lu.destroy
-        end
-      end
-
-      @all_languages = Tr8n::Language.enabled_languages
-      @user_languages = Tr8n::LanguageUser.languages_for(tr8n_current_user)
-      render(:partial => "lists")  
+      render_lightbox
     end
 
     def remove
@@ -295,38 +277,6 @@ module Tr8n
       redirect_to_source
     end
 
-    # change language from lightbox
-    def change
-      Tr8n::LanguageUser.create_or_touch(tr8n_current_user, Tr8n::Language.find_by_locale(params[:locale]))
-      render(:layout => false)
-    end
-
-    # toggle inline translations popup window
-    def toggle_inline_translations
-      # redirect to login if not a translator
-      unless tr8n_current_user_is_guest?
-        tr8n_current_translator.toggle_inline_translations!
-      end
-      render(:layout => false)
-    end
-
-    # inline translator popup window as well as translation backend method
-    def translator
-      if params[:translation_key_id]
-        @translation_key = Tr8n::TranslationKey.find_by_id(params[:translation_key_id].to_i)
-        @translations = @translation_key.inline_translations_for(tr8n_current_language)
-        @translation = Tr8n::Translation.default_translation(@translation_key, tr8n_current_language, tr8n_current_translator)
-        @mode = params[:mode] || (@translations.empty? ? 'submit' : 'votes')
-      else  
-        @mode = 'done'
-      end
-      render(:layout => false)
-    end
-
-    def translator_splash_screen
-      render :layout => false
-    end
-
     def table
       @source_url = params[:source_url] || request.env['HTTP_REFERER']
     end
@@ -364,12 +314,14 @@ module Tr8n
           end
 
           rule_id = rule_params[:id]
+          keyword = rule_params[:keyword]
 
           if rule_id.blank?
-            rulz << cls.new(:definition => rule_definition)
+            rulz << cls.new(:keyword => keyword, :definition => rule_definition)
           else
             rule = cls.find_by_id(rule_id)
             rule = cls.new unless rule
+            rule.keyword = keyword
             rule.definition = rule_definition
             rulz << rule
           end

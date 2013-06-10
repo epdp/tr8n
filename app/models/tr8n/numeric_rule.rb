@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,13 +30,13 @@
 #  translator_id    integer         
 #  type             varchar(255)    
 #  definition       text            
-#  created_at       datetime        
-#  updated_at       datetime        
+#  created_at       datetime        not null
+#  updated_at       datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_language_rules_on_language_id_and_translator_id    (language_id, translator_id) 
-#  index_tr8n_language_rules_on_language_id                      (language_id) 
+#  tr8n_lr_lt    (language_id, translator_id) 
+#  tr8n_lr_l     (language_id) 
 #
 #++
 
@@ -50,8 +50,12 @@ class Tr8n::NumericRule < Tr8n::LanguageRule
     "number" 
   end
 
+  def self.config
+    Tr8n::Config.rules_engine[:numeric_rule]
+  end
+
   def self.suffixes
-    Tr8n::Config.rules_engine[:numeric_rule][:token_suffixes]
+    config[:token_suffixes]
   end
 
   def self.default_rules_for(language = Tr8n::Config.current_language)
@@ -67,8 +71,8 @@ class Tr8n::NumericRule < Tr8n::LanguageRule
   end
 
   def self.number_token_value(token)
-    return nil unless token and token.respond_to?(Tr8n::Config.rules_engine[:numeric_rule][:object_method])
-    token.send(Tr8n::Config.rules_engine[:numeric_rule][:object_method])
+    return nil unless token and token.respond_to?(config[:object_method])
+    token.send(config[:object_method])
   end
 
   def self.sanitize_values(values)
@@ -80,37 +84,35 @@ class Tr8n::NumericRule < Tr8n::LanguageRule
     sanitize_values(values).join(", ")
   end
 
-  # FORM: [object, singular, plural]
+  # FORM: [singular(, plural)]
   # {count | message}
   # {count | person, people}
-  def self.transform(*args)
-    unless [2, 3].include?(args.size)
-      raise Tr8n::Exception.new("Invalid transform arguments for number token")
+  # {count | one: person, other: people}
+  # "У вас есть {count|| one: сообщение, few: сообщения, many: сообщений}"
+  def self.transform_params_to_options(params)
+    options = {}
+    if params[0].index(':')
+      params.each do |arg|
+        parts = arg.split(':')
+        options[parts.first.strip.to_sym] = parts.last.strip
+      end
+    else # default falback to {|| singular} or {|| singular, plural} - mostly for English support
+      if params.size == 1 # {|| singular}
+        options[:one] = params[0]
+        options[:many] = params[0].pluralize
+      elsif params.size == 2
+        options[:one] = params[0]
+        options[:many] = params[1]
+      else
+        raise Tr8n::Exception.new("Invalid number of parameters in the transform token #{token}")
+      end  
     end
-    
-    object = args[0]
-    object_value = number_token_value(object)
-    unless object_value
-      raise Tr8n::Exception.new("Token #{object.class.name} does not respond to #{Tr8n::Config.rules_engine[:numeric_rule][:object_method]}")
-    end
-    
-    if object_value == 1
-      return args[1]
-    elsif args.size == 2
-      return args[1].pluralize
-    end
-    
-    args[2]
+    options
   end
   
-  # params: [singular form, plural form]
-  def self.default_transform(*args)
-    unless [1, 2].include?(args.size)
-      raise Tr8n::Exception.new("Invalid transform arguments for number token")
-    end
-    
-    return args[1] if args.size == 2
-    args[0].pluralize
+  def self.default_transform(token, params)
+    options = transform_params_to_options(params)
+    options[:many] || options[:other]
   end  
   
   def self.evaluate_rule_fragment(token_value, name, values)

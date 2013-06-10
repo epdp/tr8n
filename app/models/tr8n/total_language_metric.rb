@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -35,19 +35,23 @@
 #  key_count               integer         default = 0
 #  locked_key_count        integer         default = 0
 #  translated_key_count    integer         default = 0
-#  created_at              datetime        
-#  updated_at              datetime        
+#  created_at              datetime        not null
+#  updated_at              datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_language_metrics_on_created_at     (created_at) 
-#  index_tr8n_language_metrics_on_language_id    (language_id) 
+#  tr8n_lm_c    (created_at) 
+#  tr8n_lm_l    (language_id) 
 #
 #++
 
 class Tr8n::TotalLanguageMetric < Tr8n::LanguageMetric
 
-  def update_metrics!
+  after_create :update_metrics!   
+
+  def update_metrics!(opts = {})
+    return Tr8n::OfflineTask.schedule(self, :update_metrics!, {:offline => true}) unless opts[:offline]
+
     self.user_count = Tr8n::LanguageUser.where("language_id = ?", language_id).count
     self.translator_count = Tr8n::LanguageUser.where("language_id = ? and translator_id is not null", language_id).count
     self.translation_count = Tr8n::Translation.where("language_id = ?", language_id).count
@@ -62,23 +66,19 @@ class Tr8n::TotalLanguageMetric < Tr8n::LanguageMetric
         :joins => "join tr8n_translations on tr8n_translation_keys.id = tr8n_translations.translation_key_id") 
     save
 
-    language.update_attributes(:completeness => calculate_language_completeness)
+    language.completeness = (locked_key_count * 100 / key_count)
+    language.save
     
     self
-  end
-  
-  def calculate_language_completeness
-    keys_with_approved_translations_count = Tr8n::TranslationKey.count("distinct tr8n_translation_keys.id", 
-        :conditions => ["tr8n_translations.language_id = ? and tr8n_translations.rank >= ?", language_id, Tr8n::Config.translation_threshold], 
-        :joins => "join tr8n_translations on tr8n_translation_keys.id = tr8n_translations.translation_key_id") 
-    
-    return 0 if keys_with_approved_translations_count == 0 or key_count == 0
-    
-    (keys_with_approved_translations_count * 100 / key_count)
   end
   
   def completeness
     language.completeness
   end
   
+  def translation_completeness
+    return 0 if key_count.nil? or key_count == 0
+    (translated_key_count * 100)/key_count
+  end
+
 end

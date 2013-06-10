@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -26,12 +26,13 @@
 # Table name: tr8n_translators
 #
 #  id                      INTEGER         not null, primary key
-#  user_id                 integer         not null
+#  user_id                 integer         
 #  inline_mode             boolean         
 #  blocked                 boolean         
 #  reported                boolean         
-#  fallback_language_id    integer         
+#  voting_power            integer         default = 1
 #  rank                    integer         default = 0
+#  fallback_language_id    integer         
 #  name                    varchar(255)    
 #  gender                  varchar(255)    
 #  email                   varchar(255)    
@@ -40,25 +41,25 @@
 #  link                    varchar(255)    
 #  locale                  varchar(255)    
 #  level                   integer         default = 0
-#  manager                 integer         
+#  manager                 boolean         
 #  last_ip                 varchar(255)    
 #  country_code            varchar(255)    
-#  created_at              datetime        
-#  updated_at              datetime        
 #  remote_id               integer         
+#  access_key              varchar(255)    
+#  created_at              datetime        not null
+#  updated_at              datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_translators_on_email_and_password    (email, password) 
-#  index_tr8n_translators_on_email                 (email) 
-#  index_tr8n_translators_on_created_at            (created_at) 
-#  index_tr8n_translators_on_user_id               (user_id) 
+#  tr8n_t_ep    (email, password) 
+#  tr8n_t_e     (email) 
+#  tr8n_t_c     (created_at) 
+#  tr8n_t_u     (user_id) 
 #
 #++
 
 class Tr8n::Translator < ActiveRecord::Base
   self.table_name = :tr8n_translators
-
   attr_accessible :user_id, :inline_mode, :blocked, :reported, :fallback_language_id, :rank, :name, :gender, :email, :password, :mugshot, :link, :locale, :level, :manager, :last_ip, :country_code, :remote_id, :voting_power
   attr_accessible :user
 
@@ -78,10 +79,16 @@ class Tr8n::Translator < ActiveRecord::Base
   has_many  :language_forum_messages,       :class_name => "Tr8n::LanguageForumMessage",      :dependent => :destroy
   has_many  :languages,                     :class_name => "Tr8n::Language",                  :through => :language_users
 
+  has_many  :application_translators,       :class_name => 'Tr8n::ApplicationTranslator',     :dependent => :destroy
+  has_many  :applications,                  :class_name => 'Tr8n::Application',               :through => :application_translators
+  has_many  :component_translators,         :class_name => 'Tr8n::ComponentTranslator',       :dependent => :destroy
+  has_many  :components,                    :class_name => 'Tr8n::Component',                 :through => :component_translators
+
+
   belongs_to :fallback_language,            :class_name => 'Tr8n::Language',                  :foreign_key => :fallback_language_id
     
   def self.cache_key(user_id)
-    "translator_#{user_id}"
+    "translator_[#{user_id}]"
   end
 
   def cache_key
@@ -104,11 +111,27 @@ class Tr8n::Translator < ActiveRecord::Base
     trn
   end
 
+  def register_default_application
+    email = Tr8n::Config.user_email(user)
+    pp email
+    
+    domain_name = email.split("@").last
+    domain = Tr8n::TranslationDomain.find_or_create(nil, domain_name)
+    domain.application.add_translator(self) unless domain.application.translators.include?(self)
+    domain.application
+  end
+
   def self.register(user = Tr8n::Config.current_user)
+    return nil unless user and user.id 
+    return nil if Tr8n::Config.guest_user?(user)
+
     translator = Tr8n::Translator.find_or_create(user)
-    return unless translator
+    return nil unless translator
+
+    translator.register_default_application
 
     # update all language user entries to add a translator id
+    #deprecated
     Tr8n::LanguageUser.where(:user_id => user.id).each do |lu|
       lu.update_attributes(:translator => translator)
     end
@@ -128,22 +151,13 @@ class Tr8n::Translator < ActiveRecord::Base
   end
 
   def update_metrics!(language = Tr8n::Config.current_language)
-    # calculate total metrics
     total_metric.update_metrics!
-    
-    # calculate language specific metrics
     metric_for(language).update_metrics!
   end
-  
-  def update_rank!(language = Tr8n::Config.current_language)
-    # calculate total rank
-    total_metric.update_rank!
-    
-    # calculate language specific rank
-    metric_for(language).update_rank!
 
-    # for admin tool searches
-    update_attributes(:rank => rank)
+  def update_rank!(language = Tr8n::Config.current_language)
+    total_metric.update_rank!
+    metric_for(language).update_rank!
   end
 
   def rank
@@ -151,17 +165,28 @@ class Tr8n::Translator < ActiveRecord::Base
   end
 
   def update_voting_power!(actor, new_voting_power, reason = "No reason given")
-    update_attributes(:voting_power => new_voting_power)
+    translator.update_attributes(:voting_power => new_voting_power)
+    Tr8n::TranslatorLog.log_admin(translator, :got_new_voting_power, actor, reason, new_voting_power.to_s)
 
-    translation_votes.each do |tv|
-      tv.translation.vote!(self, tv.vote)
-    end
-
-    Tr8n::TranslatorLog.log_admin(self, :got_new_voting_power, actor, reason, new_voting_power.to_s)
+    Tr8n::OfflineTask.schedule(self.class.name, :update_translations_with_new_voting_power_offline, {
+                               :translator_id => self.id
+    })
   end
+
+  def self.update_translations_with_new_voting_power_offline(opts)
+    translator = Tr8n::Translator.find_by_id(opts[:translator_id])
+    translator.translation_votes.each do |tv|
+      tv.translation.vote!(translator, tv.vote)
+    end
+  end  
       
   def voting_power
     super || 1
+  end
+
+  def generate_access_key!(actor = self.user, reason = "No reason given")
+    self.update_attributes(:access_key => Tr8n::Config.guid)
+    Tr8n::TranslatorLog.log_admin(self, :generated_access_key, actor, reason)
   end
 
   def block!(actor, reason = "No reason given")
@@ -295,6 +320,17 @@ class Tr8n::Translator < ActiveRecord::Base
     user_name
   end
 
+  def email
+    return "Tr8n Network" if system?
+    return super if remote?
+    
+    return "Deleted User" unless user
+    user_email = Tr8n::Config.user_email(user)
+    return "No Email" if user_email.blank?
+    
+    user_email
+  end  
+
   def gender
     return "unknown" if system?
     return super if remote?
@@ -317,6 +353,10 @@ class Tr8n::Translator < ActiveRecord::Base
     # return super if remote? 
     return Tr8n::Config.default_url unless user
     Tr8n::Config.user_link(user)
+  end
+
+  def url
+    "/tr8n/translator/index/#{id}"
   end
 
   def admin?
@@ -352,6 +392,16 @@ class Tr8n::Translator < ActiveRecord::Base
     tf.destroy if tf
   end
 
+  def followed_objects(type=nil)
+    if type
+      following = Tr8n::TranslatorFollowing.find(:all, :conditions => ["translator_id = ? and object_type = ?", self.id, type])    
+    else
+      following = Tr8n::TranslatorFollowing.find(:all, :conditions => ["translator_id = ?", self.id])
+    end 
+
+    following.collect{|f| f.object}
+  end
+
   def self.level_options
     @level_options ||= begin
       opts = []
@@ -366,9 +416,8 @@ class Tr8n::Translator < ActiveRecord::Base
     return unless Tr8n::Config.enable_country_tracking?
     return if self.last_ip == new_ip
 
-#    need to figure out what to do with it
-#    ipl = Tr8n::IpLocation.find_by_ip(new_ip)
-#    update_attributes(:last_ip => new_ip, :country_code => (ipl? ? ipl.ctry : nil))
+    ipl = Tr8n::IpLocation.find_by_ip(new_ip)
+    update_attributes(:last_ip => new_ip, :country_code => (ipl ? ipl.ctry : nil))
   end
 
   def to_s
@@ -382,13 +431,19 @@ class Tr8n::Translator < ActiveRecord::Base
   ###############################################################
   ## Synchronization Methods
   ###############################################################
-  def to_sync_hash(opts = {})
+  def to_api_hash(opts = {})
     { 
       "id" => opts[:remote] ? self.remote_id : self.id, 
       "name" => self.name, 
+      "email" => self.email, 
       "gender" => self.gender, 
       "mugshot" => self.mugshot, 
-      "link" => self.link
+      "link" => self.link,
+      "inline_mode" => self.inline_mode,
+      "voting_power" => self.voting_power,
+      "rank" => self.rank,
+      "locale" => self.locale,
+      "level" => self.level,
     }
   end
 

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -32,8 +32,8 @@
 #  translations_sent        integer     
 #  keys_received            integer     
 #  translations_received    integer     
-#  created_at               datetime    
-#  updated_at               datetime    
+#  created_at               datetime    not null
+#  updated_at               datetime    not null
 #
 # Indexes
 #
@@ -42,7 +42,6 @@
 
 class Tr8n::SyncLog < ActiveRecord::Base
   self.table_name = :tr8n_sync_logs
-
   attr_accessible :started_at, :finished_at, :keys_sent, :translations_sent, :keys_received, :translations_received
 
   def self.sync(opts = {})
@@ -73,7 +72,7 @@ class Tr8n::SyncLog < ActiveRecord::Base
     
     Tr8n::TranslationKey.find_each(:conditions => conditions, :batch_size => batch_size) do |key|
       self.keys_sent += 1
-      tkey_hash = key.to_sync_hash(:languages => languages)
+      tkey_hash = key.to_api_hash(:languages => languages)
       self.translations_sent += tkey_hash["translations"].size if tkey_hash["translations"]
       translation_keys << tkey_hash
 

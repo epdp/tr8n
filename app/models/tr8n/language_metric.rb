@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -35,21 +35,20 @@
 #  key_count               integer         default = 0
 #  locked_key_count        integer         default = 0
 #  translated_key_count    integer         default = 0
-#  created_at              datetime        
-#  updated_at              datetime        
+#  created_at              datetime        not null
+#  updated_at              datetime        not null
 #
 # Indexes
 #
-#  index_tr8n_language_metrics_on_created_at     (created_at) 
-#  index_tr8n_language_metrics_on_language_id    (language_id) 
+#  tr8n_lm_c    (created_at) 
+#  tr8n_lm_l    (language_id) 
 #
 #++
 
 class Tr8n::LanguageMetric < ActiveRecord::Base
   self.table_name = :tr8n_language_metrics
-  
   attr_accessible :language_id, :metric_date, :user_count, :translator_count, :translation_count, :key_count, :locked_key_count, :translated_key_count
-  attr_accessible :language
+  attr_accessible :language, :completeness
   
   belongs_to :language, :class_name => "Tr8n::Language"   
 
@@ -74,7 +73,7 @@ class Tr8n::LanguageMetric < ActiveRecord::Base
   
   def self.calculate_language_metrics
     last_daily_metric = Tr8n::DailyLanguageMetric.where("metric_date is not null").order("metric_date desc").first
-    metric_date = last_daily_metric.nil? ? Date.new(2011, 10, 1) : last_daily_metric.metric_date
+    metric_date = last_daily_metric.nil? ? (Date.today - 30.days) : last_daily_metric.metric_date
 
     Tr8n::Language.enabled_languages.each do |lang|
       Tr8n::Logger.debug("Processing #{lang.english_name} language...")

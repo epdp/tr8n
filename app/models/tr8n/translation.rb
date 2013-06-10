@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -33,30 +33,33 @@
 #  rank                  integer       default = 0
 #  approved_by_id        integer(8)    
 #  rules                 text          
-#  created_at            datetime      
-#  updated_at            datetime      
 #  synced_at             datetime      
+#  created_at            datetime      not null
+#  updated_at            datetime      not null
 #
 # Indexes
 #
-#  tr8n_trans_created_at                      (created_at) 
-#  tr8n_trans_key_id_translator_id_lang_id    (translation_key_id, translator_id, language_id) 
-#  r8n_trans_translator_id                    (translator_id) 
+#  tr8n_trn_c       (created_at) 
+#  tr8n_trn_tktl    (translation_key_id, translator_id, language_id) 
+#  tr8n_trn_t       (translator_id) 
 #
 #++
 
 class Tr8n::Translation < ActiveRecord::Base
   self.table_name = :tr8n_translations
-
   attr_accessible :translation_key_id, :language_id, :translator_id, :label, :rank, :approved_by_id, :rules, :synced_at
   attr_accessible :language, :translator, :translation_key
 
+  after_create    :distribute_notification
   after_save      :update_cache
   after_destroy   :update_cache
 
   belongs_to :language,         :class_name => "Tr8n::Language"
   belongs_to :translation_key,  :class_name => "Tr8n::TranslationKey"
   belongs_to :translator,       :class_name => "Tr8n::Translator"
+
+  has_many :translation_key_sources,  :class_name => "Tr8n::TranslationKeySource",  :through => :translation_key
+  has_many :translation_sources,      :class_name => "Tr8n::TranslationSource",     :through => :translation_key_sources
   
   has_many   :translation_votes, :class_name => "Tr8n::TranslationVote", :dependent => :destroy
   
@@ -71,8 +74,10 @@ class Tr8n::Translation < ActiveRecord::Base
   def vote!(translator, score)
     score = score.to_i
     vote = Tr8n::TranslationVote.find_or_create(self, translator)
-    vote.update_attributes(:vote => score)
+    vote.update_attributes(:vote => score.to_i)
     
+    Tr8n::Notification.distribute(vote)
+
     update_rank!
     
     # update the translation key timestamp
@@ -85,6 +90,7 @@ class Tr8n::Translation < ActiveRecord::Base
     
     translator.voted_on_translation!(self)
     translator.update_metrics!(language)
+    translation_key.update_metrics!(language)
   end
   
   def update_rank!
@@ -198,8 +204,9 @@ class Tr8n::Translation < ActiveRecord::Base
 
   def self.default_translation(translation_key, language, translator)
     trans = where("translation_key_id = ? and language_id = ? and translator_id = ? and rules is null", translation_key.id, language.id, translator.id).order("rank desc").first
-    trans ||= new(:translation_key => translation_key, :language => language, :translator => translator, :label => translation_key.sanitized_label)
-    trans  
+    return trans if trans
+    label = translation_key.default_translation if translation_key.is_a?(Tr8n::RelationshipKey)
+    new(:translation_key => translation_key, :language => language, :translator => translator, :label => label || translation_key.sanitized_label)
   end
 
   def blank?
@@ -246,10 +253,15 @@ class Tr8n::Translation < ActiveRecord::Base
     
     destroy
   end
-  
+
+  def distribute_notification
+    Tr8n::Notification.distribute(self)
+  end
+
   def update_cache
-    language.translations_changed!
-    translation_key.translations_changed!(language)
+    # Tr8n::Cache.delete("translations_#{language.locale}_#{translation_key.key}") if language and translation_key
+    language.translations_changed! if language
+    translation_key.translations_changed!(language) if translation_key
   end
   
   ###############################################################
@@ -261,17 +273,17 @@ class Tr8n::Translation < ActiveRecord::Base
   end
 
   def rules_sync_hash(opts = {})
-    @rules_sync_hash ||= (rules || []).collect{|rule| rule[:rule].to_sync_hash(rule[:token], opts)}
+    @rules_sync_hash ||= (rules || []).collect{|rule| rule[:rule].to_api_hash(opts.merge(:token => rule[:token]))}
   end
 
   # serilaize translation to API hash to be used for synchronization
-  def to_sync_hash(opts = {})
+  def to_api_hash(opts = {})
     return {"locale" => language.locale, "label" => label, "rules" => rules_sync_hash(opts)} if opts[:comparible]
     
-    hash = {"locale" => language.locale, "label" => label, "rank" => rank, "rules" => rules_sync_hash(opts)}
+    hash = {"id" => id, "locale" => language.locale, "label" => label, "rank" => rank, "rules" => rules_sync_hash(opts)}
     if translator
       if opts[:include_translator] # tr8n.net => local = include full translator info
-        hash["translator"] = translator.to_sync_hash(opts)
+        hash["translator"] = translator.to_api_hash(opts)
       elsif translator.remote_id  # local => tr8n.net = include only the remote id of the translator if the translator is linked 
         hash["translator_id"] = translator.remote_id
       end  
@@ -338,36 +350,45 @@ class Tr8n::Translation < ActiveRecord::Base
   
   def self.for_params(params, language = Tr8n::Config.current_language)
     results = self.where("language_id = ?", language.id)
+
+    # only translations from the selected application
+    if params[:application]
+      results = results.joins(:translation_sources).where("tr8n_translation_sources.application_id = ?", params[:application].id)
+    end
     
     # ensure that only allowed translations are visible
     allowed_level = Tr8n::Config.current_user_is_translator? ? Tr8n::Config.current_translator.level : 0
-    results = results.where("translation_key_id in (select id from tr8n_translation_keys where level <= ?)", allowed_level) 
+    results = results.joins(:translation_key).where("tr8n_translation_keys.level <= ?", allowed_level) 
     
-    results = results.where("label like ?", "%#{params[:search]}%") unless params[:search].blank?
+    if params[:only_phrases]  
+      results = results.where("tr8n_translation_keys.type is null or tr8n_translation_keys.type = ? or tr8n_translation_keys.type = ?", 'Tr8n::TranslationKey', 'TranslationKey')
+    end
+
+    results = results.where("tr8n_translations.label like ?", "%#{params[:search]}%") unless params[:search].blank?
   
     if params[:with_status] == "accepted"
-      results = results.where("rank >= ?", Tr8n::Config.translation_threshold)
+      results = results.where("tr8n_translations.rank >= ?", Tr8n::Config.translation_threshold)
     elsif params[:with_status] == "pending"
-      results = results.where("rank >= 0 and rank < ?", Tr8n::Config.translation_threshold)
+      results = results.where("tr8n_translations.rank >= 0 and tr8n_translations.rank < ?", Tr8n::Config.translation_threshold)
     elsif params[:with_status] == "rejected"
-      results = results.where("rank < 0")
+      results = results.where("tr8n_translations.rank < 0")
     end
     
     if params[:submitted_by] == "me"
-      results = results.where("translator_id = ?", Tr8n::Config.current_user_is_translator? ? Tr8n::Config.current_translator.id : 0)
+      results = results.where("tr8n_translations.translator_id = ?", Tr8n::Config.current_user_is_translator? ? Tr8n::Config.current_translator.id : 0)
     end
     
     if params[:submitted_on] == "today"
       date = Date.today
-      results = results.where("created_at >= ? and created_at < ?", date, date + 1.day)
+      results = results.where("tr8n_translations.created_at >= ? and tr8n_translations.created_at < ?", date, date + 1.day)
     elsif params[:submitted_on] == "yesterday"
       date = Date.today - 1.days
-      results = results.where("created_at >= ? and created_at < ?", date, date + 1.day)
+      results = results.where("tr8n_translations.created_at >= ? and tr8n_translations.created_at < ?", date, date + 1.day)
     elsif params[:submitted_on] == "last_week"
       date = Date.today - 7.days
-      results = results.where("created_at >= ? and created_at < ?", date, Date.today)
+      results = results.where("tr8n_translations.created_at >= ? and tr8n_translations.created_at < ?", date, Date.today)
     end    
-    results
+    results.uniq
   end 
     
 end

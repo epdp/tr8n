@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,22 +30,21 @@
 #  user_id          integer     not null
 #  translator_id    integer     
 #  manager          boolean     
-#  created_at       datetime    
-#  updated_at       datetime    
+#  created_at       datetime    not null
+#  updated_at       datetime    not null
 #
 # Indexes
 #
-#  index_tr8n_language_users_on_updated_at                       (updated_at) 
-#  index_tr8n_language_users_on_created_at                       (created_at) 
-#  index_tr8n_language_users_on_language_id_and_translator_id    (language_id, translator_id) 
-#  index_tr8n_language_users_on_language_id_and_user_id          (language_id, user_id) 
-#  index_tr8n_language_users_on_user_id                          (user_id) 
+#  tr8n_lu_ua    (updated_at) 
+#  tr8n_lu_ca    (created_at) 
+#  tr8n_lu_lt    (language_id, translator_id) 
+#  tr8n_lu_lu    (language_id, user_id) 
+#  tr8n_lu_u     (user_id) 
 #
 #++
 
 class Tr8n::LanguageUser < ActiveRecord::Base
   self.table_name = :tr8n_language_users
-
   attr_accessible :language_id, :user_id, :translator_id, :manager
   attr_accessible :language, :translator, :user
 
@@ -57,14 +56,14 @@ class Tr8n::LanguageUser < ActiveRecord::Base
   # users may choose to switch to a language without becoming translators
   # once user becomes a translator, this record will be associated with both for ease of use
   # when users get promoted, they are automatically get associated with a language and marked as translators
-  
-  def self.delete_all_languages_for_translator(translator)
-    Tr8n::LanguageUser.connection.execute("delete from #{Tr8n::LanguageUser.table_name} where translator_id = #{translator.id}")
-  end
 
   def self.find_or_create(user, language)
     lu = where("user_id = ? and language_id = ?", user.id, language.id).first
     lu || create(:user_id => user.id, :language_id => language.id)
+  end
+  
+  def self.delete_all_languages_for_translator(translator)
+    Tr8n::LanguageUser.connection.execute("delete from #{Tr8n::LanguageUser.table_name} where translator_id = #{translator.id}")
   end
 
   def self.check_default_language_for(user)

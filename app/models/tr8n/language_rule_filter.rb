@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -31,8 +31,8 @@
 #  data                text            
 #  user_id             integer         
 #  model_class_name    varchar(255)    
-#  created_at          datetime        
-#  updated_at          datetime        
+#  created_at          datetime        not null
+#  updated_at          datetime        not null
 #
 # Indexes
 #
@@ -62,11 +62,7 @@ class Tr8n::LanguageRuleFilter < Tr8n::BaseFilter
       return Tr8n::Config.language_rule_classes.collect{|cls| cls.name}
     end
 
-    return super
-  end
-
-  def inner_joins
-    [:language, :translator]
+    super
   end
 
 end

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2010-2012 Michael Berkovich, tr8n.net
+# Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -33,13 +33,13 @@
 #  ctry          varchar(2)     
 #  cntry         varchar(3)     
 #  country       varchar(80)    
-#  created_at    datetime       
-#  updated_at    datetime       
+#  created_at    datetime       not null
+#  updated_at    datetime       not null
 #
 # Indexes
 #
-#  index_tr8n_ip_locations_on_high    (high) 
-#  index_tr8n_ip_locations_on_low     (low) 
+#  tr8n_il_h    (high) 
+#  tr8n_il_l    (low) 
 #
 #++
 
@@ -69,30 +69,37 @@ class Tr8n::IpLocation < ActiveRecord::Base
     new_record? || 'ZZZ' == cntry
   end
 
-  def self.import_from_file(file, opts=nil)
-    opts ||= {:verbose => false}
+  def self.import_from_file(file, opts = {})
+    opts ||= {:verbose => true}
     puts "Deleting old records..." if opts[:verbose]
     delete_all
-    puts "Done." if opts[:verbose]
+    puts "Done." if opts[:verbose] 
+    puts "Importing new records..."  if opts[:verbose]
 
-    puts "Importing new records..." if opts[:verbose]
     file = File.open(file) if file.is_a?(String)
+    index = 0
     file.each_line do |line|
-      next if line =~ /^\s*\#|^\s*$/
-      line.chomp!.tr!('"\'','')
-      values = line.split(',')
-      create!(
-        :low      =>  values[0],
-        :high     =>  values[1],
-        :registry =>  values[2],
-        :assigned =>  Time.at(values[3].to_i),
-        :ctry     =>  values[4],
-        :cntry    =>  values[5],
-        :country  =>  Iconv.conv('UTF-8', 'ISO_8859-1', values[6])
-      )
-      $stdout << '.' if opts[:verbose]
+      begin
+        next if line =~ /^\s*\#|^\s*$/
+        line.chomp!.tr!('"\'','')
+        values = line.split(',')
+        create!(
+          :low      =>  values[0],
+          :high     =>  values[1],
+          :registry =>  values[2],
+          :assigned =>  Time.at(values[3].to_i),
+          :ctry     =>  values[4],
+          :cntry    =>  values[5],
+          :country  =>  values[6]
+        )
+        index += 1
+        pp "Imported #{index} locations" if opts[:verbose] and (index+1) % 1000 == 0
+      rescue Exception => e
+        pp line, e
+      end
     end
-    puts "Done." if opts[:verbose]
+
+    pp "Done. Imported #{count} locations" if opts[:verbose]
   end
   
 end

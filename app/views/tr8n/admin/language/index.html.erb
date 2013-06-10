@@ -1,7 +1,13 @@
+<style>
+.wf_results_table td {
+  padding: 0px;
+}
+</style>
+
 <%= render :partial => "/tr8n/admin/common/header" %>
 <%= render :partial => "tabs" %>
 
-<%= tr8n_will_filter(@languages) %>
+<%= tr8n_will_filter(@results) %>
 
 <%=link_to_function("+ Add New Language", "Tr8n.UI.Lightbox.show('/tr8n/admin/language/lb_update', {height:400})")%>
  | 
@@ -9,9 +15,9 @@
 <br>
 
 <%= form_tag("", :id => "languages_form") do %>
-	<%= will_filter_table_tag(@languages, :columns => [
+	<%= will_filter_table_tag(@results, :columns => [
+    [:flag, lambda{|lang| image_tag("tr8n/flags/#{lang.flag}.png")}, :style => 'width:20px;', :title => ''],
     [:checkbox, 'languages'],
-	  [:flag, lambda{|lang| image_tag("tr8n/flags/#{lang.flag}.png")}],
 	  [:locale, lambda{|lang|
 	    html = []
 	    if lang.enabled?
@@ -35,7 +41,7 @@
 	    html << lang.right_to_left?
 	    html << '</span>'
 	    html.join(' ').html_safe
-	  }],
+	  }, :filterable => true],
 	  [:featured_index, lambda{|lang| lang.featured_index}, 'text-align:right;'],
 	  [:users, lambda{|lang| lang.total_metric.user_count}, 'text-align:right;'], 
 	  [:translators, lambda{|lang| lang.total_metric.translator_count}, 'text-align:right;'], 
@@ -69,9 +75,11 @@
 	]) %>
 <% end %>
 
-<%= will_filter_actions_bar_tag(@languages, [
-['Enable Selected Languages', 'enableSelectedLanguages()'], 
-['Disable Selected Languages', 'disableSelectedLanguages()']]) %>
+<%= will_filter_actions_bar_tag(@results, [
+	['Enable Selected Languages', 'enableSelectedLanguages()'], 
+	['Disable Selected Languages', 'disableSelectedLanguages()'],
+	['Add To Component', 'addSelectedLanguagesToComponent()'],
+]) %>
 
 <script>
 	function calculateCompleteness() {
@@ -94,6 +102,28 @@
     Tr8n.element('languages_form').action = "/tr8n/admin/language/enable";
     Tr8n.element('languages_form').submit();
   }
+
+  function getSelectedLanguages() {
+    var i=0;
+    var checkbox = Tr8n.element('wf_check_' + i);
+    var languages = [];
+    while (checkbox) {
+      if (checkbox.checked) {
+        languages.push(checkbox.value);
+      }
+      checkbox = Tr8n.element('wf_check_' + (++i));
+    }
+    return languages; 
+  }
+
+  function addSelectedLanguagesToComponent() {
+    var languages = getSelectedLanguages();
+    if (languages.length == 0) {
+      alert('At least one translator must be selected.');
+      return;
+    }
+    Tr8n.UI.Lightbox.show('/tr8n/admin/applications/lb_add_to_component?languages=' + languages, {height:400});
+  }    
 </script>
 
 <%= render :partial => "/tr8n/admin/common/footer" %>

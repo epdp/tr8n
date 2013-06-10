@@ -1,0 +1,12 @@
+<%= will_filter_scripts_tag %>
+
+<%= form_tag("", :id => "tr8n_form") do %>
+  <%= will_filter_table_tag(@results, :columns => [
+    :id,
+    :object_type, 
+    :object_id,
+    :reason,
+    :comment,
+    :created_at,
+  ]) %>
+<% end %>
