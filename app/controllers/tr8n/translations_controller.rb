@@ -33,9 +33,9 @@ class Tr8n::TranslationsController < Tr8n::BaseController
   def index
     # In the embedded mode - there should be only one application
     begin
-      @selected_application = send(:tr8n_selected_application)
-    rescue 
-      @selected_application = Tr8n::Config.current_app
+      @selected_application = send(:current_application)
+    rescue
+      @selected_application = Tr8n::Config.default_application
     end
 
     @translations = Tr8n::Translation.for_params(params.merge(:application => @selected_application, :only_phrases => true))
@@ -193,7 +193,9 @@ class Tr8n::TranslationsController < Tr8n::BaseController
         trn.save_with_log!(tr8n_current_translator)
         trn.reset_votes!(tr8n_current_translator)
       end
-      return redirect_to(:controller => '/tr8n/language', :action => :translator, :mode => :done, :translation_key_id => translation_key.id, :origin => params[:origin])
+
+      destination_url = {:controller => '/tr8n/tools/translator', :action => 'done', :translation_key_id => translation_key.id, :origin => params[:origin]}
+      return redirect_to(destination_url)
     end
 
     @translation = Tr8n::Translation.find(params[:translation_id])

@@ -25,12 +25,13 @@
 #
 # Table name: tr8n_translation_domains
 #
-#  id              INTEGER         not null, primary key
-#  name            varchar(255)    
-#  description     varchar(255)    
-#  source_count    integer         default = 0
-#  created_at      datetime        not null
-#  updated_at      datetime        not null
+#  id                INTEGER         not null, primary key
+#  name              varchar(255)    
+#  description       varchar(255)    
+#  application_id    integer         
+#  source_count      integer         default = 0
+#  created_at        datetime        not null
+#  updated_at        datetime        not null
 #
 # Indexes
 #
@@ -68,9 +69,7 @@ class Tr8n::TranslationDomain < ActiveRecord::Base
   def self.normalize_domain(url)
     return Socket::gethostname if url.blank?
     uri = URI.parse(url)
-    parts = uri.host.split(".")
-    return parts.first if parts.size == 1
-    parts[-2..-1].join(".")
+    uri.host
   end
 
   def self.find_or_create(url, domain_name = nil)

@@ -1,4 +1,4 @@
-2#--
+#--
 # Copyright (c) 2010-2013 Michael Berkovich, tr8nhub.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining
@@ -27,10 +27,13 @@
 #
 #  id             INTEGER         not null, primary key
 #  key            varchar(255)    
+#  secret         varchar(255)    
 #  name           varchar(255)    
 #  description    varchar(255)    
 #  created_at     datetime        not null
 #  updated_at     datetime        not null
+#  version        varchar(255)    
+#  definition     text            
 #
 # Indexes
 #
@@ -78,7 +81,7 @@ class Tr8n::Application < ActiveRecord::Base
   end
 
   def self.options
-    Tr8n::Application.find(:all, :order => "name asc").collect{|app| [app.name, app.id]}
+    Tr8n::Application.all.order("name asc").collect{|app| [app.name, app.id]}
   end
 
   def featured_languages
@@ -106,7 +109,13 @@ class Tr8n::Application < ActiveRecord::Base
 
     if opts[:definition]
       defs = {}
-      defs.merge!(:default_data_tokens => Tr8n::Config.default_data_tokens, :default_decoration_tokens =>  Tr8n::Config.default_decoration_tokens)
+      defs.merge!({
+        :default_data_tokens        => Tr8n::Config.default_data_tokens, 
+        :default_decoration_tokens  =>  Tr8n::Config.default_decoration_tokens,
+        :enable_language_cases      => Tr8n::Config.config[:enable_language_cases],
+        :enable_language_flags      => Tr8n::Config.config[:enable_language_flags],
+      })
+      
       defs[:rules] = {}
       Tr8n::Config.language_rule_classes.each do |rule_class|
         defs[:rules][rule_class.keyword] = rule_class.config
@@ -114,6 +123,8 @@ class Tr8n::Application < ActiveRecord::Base
 
       hash[:definition] = defs
       hash[:languages] = languages.collect{|l| l.to_api_hash(opts)}
+      hash[:sources] = sources.collect{|s| s.to_api_hash(opts)}
+      hash[:components] = components.collect{|c| c.to_api_hash(opts)}
     end
 
     hash
@@ -170,7 +181,7 @@ class Tr8n::Application < ActiveRecord::Base
     tokens = Tr8n::Oauth::AccessToken.where("application_id = ? and translator_id = ?", self.id, translator.id).all
     valid_token = find_valid_token_for_scope(tokens, scope)
     valid_token ||= create_access_token(translator, scope, expire_in)
-    Tr8n::ApplicationTranslator.touch(self, user)
+    Tr8n::ApplicationTranslator.touch(self, translator)
 
     valid_token
   end  

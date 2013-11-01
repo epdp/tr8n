@@ -1,15 +1,33 @@
 source "http://rubygems.org"
-
-# Declare your gem's dependencies in tr8n.gemspec.
-# Bundler will treat runtime dependencies like base dependencies, and
-# development dependencies will be added by default to the :development group.
 gemspec
 
-# To use debugger
-# gem 'ruby-debug19', :require => 'ruby-debug'
+gem 'bundler', ['>= 1.3.0']
 
-# Gems for a standalone instance only
-
-# To use ActiveModel has_secure_password
+gem 'dalli'
 gem "bcrypt-ruby", :require => "bcrypt"
-gem "sass"
+
+gem 'delayed_job_active_record'
+gem 'daemons'
+
+gem 'jquery-rails'
+gem 'jquery-ui-rails'
+gem 'bootstrap-sass'
+gem 'kaminari'
+gem 'will_filter', '~> 3.1.10'
+
+group :development do
+  gem 'rspec'
+  gem 'rspec-rails'
+  gem 'pry'
+  gem 'sqlite3'
+  gem 'spork'
+  gem 'watchr'
+  gem 'rr'
+end
+
+group :assets do
+  gem 'sass-rails',   '~> 3.2.3'
+  gem 'coffee-rails', '~> 3.2.1'
+  gem 'uglifier',     '>= 1.0.3'
+end
+

@@ -32,11 +32,13 @@
 #  definition       text            
 #  created_at       datetime        not null
 #  updated_at       datetime        not null
+#  keyword          varchar(255)    
 #
 # Indexes
 #
-#  tr8n_lr_lt    (language_id, translator_id) 
-#  tr8n_lr_l     (language_id) 
+#  tr8n_lr_tlk    (type, language_id, keyword) 
+#  tr8n_lr_lt     (language_id, translator_id) 
+#  tr8n_lr_l      (language_id) 
 #
 #++
 
@@ -55,17 +57,6 @@ class Tr8n::LanguageRule < ActiveRecord::Base
 
   def self.config
     Tr8n::Config.rules_engine
-  end
-
-  def self.to_api_hash(opts = {})
-    hash = {:type => keyword}.merge(config)
-    if opts[:language]
-      hash[:rules] = []
-      where(:language_id => opts[:language].id).each do |lr|
-        hash[:rules] << lr.to_api_hash
-      end
-    end
-    hash
   end
 
   def self.rule_for_keyword_and_language(keyword, language = Tr8n::Config.current_language)
@@ -222,7 +213,7 @@ class Tr8n::LanguageRule < ActiveRecord::Base
       }
     end
 
-    definition.merge(:keyword => keyword)
+    definition
   end
   
   def self.create_from_sync_hash(lang, translator, rule_hash, opts = {})

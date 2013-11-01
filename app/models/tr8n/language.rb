@@ -136,8 +136,8 @@ class Tr8n::Language < ActiveRecord::Base
   def reset_language_rules!
     rules.delete_all
     Tr8n::Config.language_rule_classes.each do |rule_class|
-      rule_class.default_rules_for(self).each do |definition|
-        rule_class.create(:language => self, :definition => definition)
+      rule_class.default_rules_for(self).each do |keyword, definition|
+        rule_class.create(:language => self, :keyword => keyword, :definition => definition)
       end
     end
   end
@@ -416,17 +416,18 @@ class Tr8n::Language < ActiveRecord::Base
       hash[:curse_words] = curse_words
       hash[:fallback] = fallback_language.locale if fallback_language
 
-      hash[:context_rules] = []
-      Tr8n::Config.language_rule_classes.each do |rule_class|
-        hash[:context_rules] << rule_class.to_api_hash(:language => self)
+      hash[:context_rules] = {}
+      language_rules.each do |rule|
+        hash[:context_rules][rule.class.dependency] ||= {}
+        hash[:context_rules][rule.class.dependency][rule.keyword] = rule.to_api_hash
       end
 
-      hash[:language_cases] = []
+      hash[:language_cases] = {}
       Tr8n::LanguageCase.where(:language_id => self.id).each do |lc|
-        hash[:language_cases] << lc.to_api_hash(:rules => true)
+        hash[:language_cases][lc.keyword] = lc.to_api_hash(:rules => true)
       end
-
     end
+
     hash
   end
 

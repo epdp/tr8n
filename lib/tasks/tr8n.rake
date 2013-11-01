@@ -27,7 +27,25 @@ namespace :tr8n do
     raise "This action is prohibited in this environment" if ['production', 'stage', 'staging'].include?(Rails.env)
     Tr8n::Config.reset_all!
   end
-  
+
+  desc "Export languages"
+  task :export_languages => :environment do
+    path = ENV['path'] || 'config/tr8n/languages'
+    FileUtils.mkdir_p(path)
+
+    proc = Proc.new { |k, v| v.kind_of?(Hash) ? (v.delete_if(&proc); nil) : (v.nil? or (v.is_a?(String) and v.blank?) or (v === false)) }
+
+    Tr8n::Language.all.each do |lang|
+      pp "Exporting #{lang.locale}..."
+      file_path = path + "/" + lang.locale + ".json"
+      File.open(file_path, 'w') do |file|
+        json = lang.to_api_hash(:definition => true)
+        json.delete_if(&proc)
+        file.write(JSON.pretty_generate(json))
+      end
+    end
+  end
+
   desc "Resets all metrics"
   task :reset_metrics => :environment do
     Tr8n::LanguageMetric.reset_metrics

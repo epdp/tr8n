@@ -262,12 +262,10 @@ class Tr8n::TranslationKey < ActiveRecord::Base
   end
 
   # used by all translation methods
-  def cached_translations_for_language(language = Tr8n::Config.current_language)
-    @cached_translations ||= begin 
-      translations = Tr8n::Config.current_source.valid_translations_for_key_and_language(self.key, language)
-      # pp "found #{translations.count} cached translations for #{self.label}" if translations
-      translations || valid_translations_for_language(language)
-    end
+  def cached_translations_for_language(language)
+    translations = Tr8n::Config.current_source.valid_translations_for_key_and_language(self.key, language)
+    # pp "found #{translations.count} cached translations for #{self.label}" if translations
+    translations || valid_translations_for_language(language)
   end
   
   def translation_with_such_rules_exist?(language_translations, translator, rules_hash)
@@ -400,8 +398,6 @@ class Tr8n::TranslationKey < ActiveRecord::Base
     [language, nil]
   end
 
-  # new way of getting translations for an API call
-  # TODO: switch to the new sync_hash method
   def valid_translations_with_rules(language = Tr8n::Config.current_language, opts = {})
     translations = cached_translations_for_language(language)
     return [] if translations.empty?
@@ -418,10 +414,10 @@ class Tr8n::TranslationKey < ActiveRecord::Base
       context_key = translation.rules_hash || ""
       next if context_hash_matches[context_key]
       context_hash_matches[context_key] = true
-      if translation.rules_definitions
-        valid_translations << {:label => translation.label, :context => translation.rules_definitions.dup}
+      if translation.rules.blank?
+        valid_translations << {:label => translation.label, :locale => translation.language.locale}
       else
-        valid_translations << {:label => translation.label}
+        valid_translations << {:label => translation.label, :locale => translation.language.locale, :context => translation.rules_api_hash}
       end
     end
 
@@ -476,15 +472,19 @@ class Tr8n::TranslationKey < ActiveRecord::Base
     processed_label = translated_label.to_s.dup
 
     # substitute all data tokens
-    Tr8n::TokenizedLabel.new(processed_label).data_tokens.each do |token|
+    Tr8n::Token.register_tokens(processed_label, :data).each do |token|
       next unless allowed_token?(token)
       processed_label = token.substitute(self, processed_label, token_values, options, language) 
     end
 
     # substitute all decoration tokens
-    Tr8n::TokenizedLabel.new(processed_label).decoration_tokens.each do |token|
-      next unless allowed_token?(token)
-      processed_label = token.substitute(self, processed_label, token_values, options, language) 
+    tokens = Tr8n::Token.register_tokens(processed_label, :decoration, :exclude_nested => true)
+    while tokens.any? do
+      tokens.each do |token|
+        next unless allowed_token?(token)
+        processed_label = token.substitute(self, processed_label, token_values, options, language) 
+      end
+      tokens = Tr8n::Token.register_tokens(processed_label, :decoration, :exclude_nested => true)
     end
     
     processed_label

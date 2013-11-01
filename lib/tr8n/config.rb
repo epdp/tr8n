@@ -41,7 +41,7 @@ module Tr8n
       # register source with component
       unless component.nil?
         set_current_component(component)
-        Tr8n::ComponentSource.find_or_create(current_component, current_source)
+        component.register_source(current_source)
       else
         set_current_component(nil)
       end
@@ -160,7 +160,8 @@ module Tr8n
       Thread.current[:tr8n_block_options]  = nil
       Thread.current[:tr8n_source] = nil
       Thread.current[:tr8n_component] = nil
-      Thread.current[:tr8n_remote_application] = nil 
+      Thread.current[:tr8n_remote_application] = nil
+      Thread.current[:tr8n_format] = nil
     end
 
     def self.models
@@ -172,16 +173,21 @@ module Tr8n
          Tr8n::TranslationSource, Tr8n::TranslationDomain, Tr8n::TranslationSourceLanguage, 
          Tr8n::Translation, Tr8n::TranslationVote, Tr8n::TranslationSourceMetric,
          Tr8n::Translator, Tr8n::TranslatorLog, Tr8n::TranslatorMetric, 
-         Tr8n::TranslatorFollowing, Tr8n::TranslatorReport, Tr8n::AccessToken,
+         Tr8n::TranslatorFollowing, Tr8n::TranslatorReport, 
          Tr8n::LanguageForumTopic, Tr8n::LanguageForumMessage,
          Tr8n::Glossary, Tr8n::IpLocation, Tr8n::SyncLog, Tr8n::Application, 
          Tr8n::Component, Tr8n::ComponentSource, Tr8n::ComponentTranslator, Tr8n::ComponentLanguage,
-         Tr8n::Notification
+         Tr8n::Notification,
+         Tr8n::Oauth::OauthToken
       ]    
     end
 
     def self.guid
       (0..16).to_a.map{|a| rand(16).to_s(16)}.join
+    end
+
+    def self.default_application
+       @default_application = Tr8n::Application.find_by_key("default") || init_application
     end
 
     # will clean all tables and initialize default values
@@ -194,13 +200,37 @@ module Tr8n
       end
       puts "Done."
 
-      init_default_languages
+      init_languages
       init_glossary
-    
+      init_application
+
       puts "Done."
     end
 
-    def self.init_default_languages
+    def self.init_application
+      puts "Initializing default application..."
+
+      app = Tr8n::Application.find_by_key("default") || Tr8n::Application.create(:key => "default", :name => site_title, :description => "Automatically created during initialization")
+
+      # setup for base url
+      uri = URI.parse(base_url)
+      domain = Tr8n::TranslationDomain.find_by_name(uri.host) || Tr8n::TranslationDomain.create(:name => uri.host)
+      domain.application = app
+      domain.save
+
+      # setup for development environment
+      domain = Tr8n::TranslationDomain.find_by_name("localhost") || Tr8n::TranslationDomain.create(:name => "localhost")
+      domain.application = app
+      domain.save
+
+      ["en-US", "ru", "fr", "es"].each do |locale|
+        app.add_language(Tr8n::Language.for(locale))
+      end
+
+      app
+    end
+
+    def self.init_languages
       puts "Initializing default languages..."
       default_languages.each do |locale, info|
         puts ">> Initializing #{info[:english_name]}..."
@@ -254,12 +284,22 @@ module Tr8n
       @default_languages ||= load_yml("/config/tr8n/site/default_languages.yml", nil)
     end
 
+    def self.format
+      Thread.current[:tr8n_format] ||= 'html'
+    end
+
+    def self.set_format(request_format)
+      Thread.current[:tr8n_format] = request_format
+    end    
+
     def self.default_decoration_tokens
       @default_decoration_tokens ||= load_yml("/config/tr8n/tokens/decorations.yml", nil)
+      @default_decoration_tokens[format]
     end
 
     def self.default_data_tokens
       @default_data_tokens ||= load_yml("/config/tr8n/tokens/data.yml", nil)
+      @default_data_tokens[format]
     end
 
     def self.default_glossary
@@ -696,11 +736,17 @@ module Tr8n
     def self.allow_nil_token_values?
       rules_engine[:allow_nil_token_values]
     end
-  
+
+    def self.token_classes(category = :data)
+      rules_engine["#{category}_token_classes".to_sym].collect{|tc| tc.constantize}
+    end
+
+    # deprecated
     def self.data_token_classes
       @data_token_classes ||= rules_engine[:data_token_classes].collect{|tc| tc.constantize}
     end
 
+    # deprecated
     def self.decoration_token_classes
       @decoration_token_classes ||= rules_engine[:decoration_token_classes].collect{|tc| tc.constantize}
     end
@@ -730,9 +776,9 @@ module Tr8n
       @default_rules[rules_type] ||= load_yml("/config/tr8n/rules/default_#{rules_type}_rules.yml", nil)
       rules_for_locale = @default_rules[rules_type][locale.to_s]
     
-      return rules_for_locale.values unless rules_for_locale.nil?
-      return [] if @default_rules[rules_type][default_locale].nil?
-      @default_rules[rules_type][default_locale].values
+      return rules_for_locale unless rules_for_locale.nil?
+      return {} if @default_rules[rules_type][default_locale].nil?
+      @default_rules[rules_type][default_locale]
     end
 
     def self.default_gender_rules(locale = default_locale)
@@ -943,17 +989,23 @@ module Tr8n
     end
 
     def self.signed_request_body
-      request_token = remote_application.find_or_create_request_token(current_translator)
-
       params = {
         'locale'  => current_language.locale,
-        'code' => request_token.token,
-        'translator' => {
-          'id'      => current_translator.id,
-          'inline'  => current_translator.inline_mode,
-          'manager' => current_translator.manager?,
-        },
       }
+
+      if current_translator
+        request_token = remote_application.find_or_create_request_token(current_translator)
+        params.merge!({
+          'code' => request_token.token,
+          'translator' => {
+            'id'      => current_translator.id,
+            'email'   => current_translator.email,
+            'name'    => current_translator.name,
+            'inline'  => current_translator.inline_mode,
+            'manager' => current_translator.manager?,
+          }
+        })
+      end
 
       sign_and_encode_params(params, remote_application.secret)
     end
