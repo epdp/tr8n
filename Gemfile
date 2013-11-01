@@ -13,7 +13,7 @@ gem 'jquery-rails'
 gem 'jquery-ui-rails'
 gem 'bootstrap-sass'
 gem 'kaminari'
-gem 'will_filter', '~> 3.1.10'
+gem 'will_filter', github: 'berk/will_filter'
 
 group :development do
   gem 'rspec'
@@ -26,8 +26,8 @@ group :development do
 end
 
 group :assets do
-  gem 'sass-rails',   '~> 3.2.3'
-  gem 'coffee-rails', '~> 3.2.1'
-  gem 'uglifier',     '>= 1.0.3'
+  gem 'sass-rails',   '~> 4.0.0'
+  gem 'coffee-rails', '~> 4.0.0'
+  gem 'uglifier',     '>= 2.0.0'
 end
 
