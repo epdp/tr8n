@@ -34,17 +34,17 @@ class User < ActiveRecord::Base
 
   validates_presence_of :name
 
-  validates :email,   :presence => true, 
+  validates :email,   :presence => true,
                       :length => {:minimum => 3, :maximum => 254},
                       :uniqueness => true,
-                      :format => {:with => /^([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})$/i}        
+                      :format => {:with => /\A([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})\z/i}
 
   has_many :sent_requests, :class_name => "Request", :foreign_key => :from_id, :dependent => :destroy
   has_many :recieved_requests, :class_name => "Request", :foreign_key => :to_id, :dependent => :destroy
 
   def self.authenticate(email, password)
     user = find_by_email(email)
-    return nil if user.nil? 
+    return nil if user.nil?
     return user if user.crypted_password.nil?
     if user.crypted_password == BCrypt::Engine.hash_secret(password, user.salt)
       user
