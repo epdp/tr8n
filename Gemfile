@@ -14,6 +14,7 @@ gem 'jquery-ui-rails'
 gem 'bootstrap-sass'
 gem 'kaminari'
 gem 'will_filter', github: 'berk/will_filter'
+gem 'protected_attributes'
 
 group :development do
   gem 'rspec'
