@@ -20,7 +20,7 @@ Gem::Specification.new do |s|
 
   s.licenses = ['MIT']
   
-  s.add_dependency "rails", '~> 4.0.0'
+  s.add_dependency "rails", '4.0.0'
   s.add_dependency 'will_filter'
   s.add_dependency 'faraday', '>= 0'
 end
