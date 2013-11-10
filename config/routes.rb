@@ -20,34 +20,34 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
-
+  
 Tr8n::Engine.routes.draw do
   [:awards, :chart, :forum, :glossary, :help, :language_cases,
    :language, :phrases, :translations, :translator].each do |ctrl|
-    match "#{ctrl}(/:action)", :controller => "#{ctrl}"
+    match "#{ctrl}(/:action)", :controller => "#{ctrl}", :via => [:get, :post]
   end
-  
-  [:applications, :components, :sources, :chart, :clientsdk, :forum, :glossary, :language, :translation, 
+..
+  [:applications, :components, :sources, :chart, :clientsdk, :forum, :glossary, :language, :translation,.
    :translation_key, :translator, :domain, :metrics].each do |ctrl|
-    match "admin/#{ctrl}(/:action)", :controller => "admin/#{ctrl}"
+    match "admin/#{ctrl}(/:action)", :controller => "admin/#{ctrl}", :via => [:get, :post]
   end
-  
+..
   [:application, :source, :component, :language, :translation_key, :translation, :translator, :proxy, :oauth].each do |ctrl|
-    match "api/#{ctrl}(/:action)", :controller => "api/#{ctrl}"
+    match "api/#{ctrl}(/:action)", :controller => "api/#{ctrl}", :via => [:get, :post]
   end
 
   [:translator, :language_selector, :language_case_manager, :utils].each do |ctrl|
-    match "tools/#{ctrl}(/:action)", :controller => "tools/#{ctrl}"
+    match "tools/#{ctrl}(/:action)", :controller => "tools/#{ctrl}", :via => [:get, :post]
   end
-  
-  match "api/language/translate.js", :controller => "api/language", :action => "translate"
+..
+  match "api/language/translate.js", :controller => "api/language", :action => "translate", :via => [:get, :post]
 
   namespace :tr8n do
-    root :to => "translator#index"
+    root :to => "translator#index", :via => [:get, :post]
     namespace :admin do
-      root :to => "applications#index"
+      root :to => "applications#index", :via => [:get, :post]
     end
   end
-  
-  root :to => "translator#index"
+..
+  root :to => "translator#index", :via => [:get, :post]
 end
