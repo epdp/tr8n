@@ -23,11 +23,27 @@
 
 module Tr8n
   class Cache
-    
-    def self.cache_store_params
-      [Tr8n::Config.cache_store].flatten
+
+    def self.symbolize_hash_keys(hash)
+      res = {}
+      hash.each_key do |key|
+        res[key.to_sym] = hash[key]
+      end
+      res
     end
-    
+
+    # parameter 0 has to be a symbol
+    # parameter 1 has to be string because they will do split
+    # parameter 2 is a hash, but the keys have to be symbols.
+    def self.cache_store_params
+      params = [Tr8n::Config.cache_store].flatten
+      params[0] = params[0].to_sym
+      if params[2] and params[2].class == ActiveSupport::HashWithIndifferentAccess
+          params[2] = symbolize_hash_keys(params[2])
+      end
+      params
+    end
+   
     def self.cache
       return nil unless enabled?
       
